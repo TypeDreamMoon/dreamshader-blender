@@ -11,6 +11,13 @@
 // Distortion is non-zero throughout, so distortion branches and the seed-offset helpers are
 // compiled rather than folded away.
 
+// Curves.dsh samples a LUT through UE's Common.ush macro. The gate compiles the generated
+// include on its own, so the macro has to be declared here — this is UE's own definition, not a
+// stand-in that could hide a mistake.
+#ifndef Texture2DSampleLevel
+#define Texture2DSampleLevel(Tex, Sampler, UV, Mip) Tex.SampleLevel(Sampler, UV, Mip)
+#endif
+
 #include "Generated.ush"
 
 // Full coverage: every public entry point, every dropdown dynamic.
@@ -245,4 +252,22 @@ float4 EP_Converter(float2 uv : TEXCOORD0, float4 knobs : TEXCOORD1) : SV_Target
                  + gen + obj + back;
     float  fac   = vecMathVal + m + mr + cl + bw + nrmDot;
     return float4(color, fac);
+}
+
+// SM5 pass: the coefficient tables and the curve lookups. The tables index a static const array
+// with a runtime index, which is the thing worth watching for compile blow-up.
+float4 EP_TablesCurves(float2 uv : TEXCOORD0, float4 knobs : TEXCOORD1,
+                       Texture2D lut : register(t0), SamplerState lutSamp : register(s0)) : SV_Target
+{
+    float3 bb = DreamShaderFn_BL_Blackbody(knobs.x * 12000.0);
+    float3 wl = DreamShaderFn_BL_Wavelength(380.0 + knobs.y * 400.0);
+
+    float rampAlpha;
+    float3 ramp = DreamShaderFn_BL_ColorRamp(lut, lutSamp, uv.x, 32.0, knobs.z, rampAlpha);
+
+    float fc = DreamShaderFn_BL_FloatCurve(lut, lutSamp, 1.0, uv.y, 0.0, 1.0, 32.0, knobs.w);
+    float3 rc = DreamShaderFn_BL_RGBCurves(lut, lutSamp, 1.0, float3(uv, 0.5), 0.0, 1.0, 32.0,
+                                           knobs.w);
+
+    return float4(bb + wl + ramp + rc, rampAlpha + fc);
 }

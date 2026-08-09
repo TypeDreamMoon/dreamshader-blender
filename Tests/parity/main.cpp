@@ -63,6 +63,8 @@ using hlsl::sinh;
 using hlsl::cosh;
 using hlsl::tanh;
 using hlsl::cross;
+using hlsl::Texture2D;
+using hlsl::SamplerState;
 
 #include "Generated.ush"
 }  // namespace port

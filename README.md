@@ -54,8 +54,8 @@ Copy it out of `DShader/Packages` before building it — a `.dsm` inside a packa
 | Mix Color (19 modes), Bright/Contrast, Gamma, Hue/Sat/Value, Invert, Separate/Combine Color, RGB to BW | `BL::MixColor`, `BL::Gamma`, … | `Color.dsh` | ported |
 | Mapping (4 types), Vector Rotate (5), Normal, Separate/Combine XYZ | `BL::Mapping`, `BL::VectorRotate`, … | `Vector.dsh` | ported |
 | Texture Coordinate — Generated, Object, UV, Normal | `BL::CoordGenerated`, … | `Space.dsh` | ported |
-| Blackbody, Wavelength | — | — | need their CIE / blackbody coefficient tables |
-| Float Curve, RGB Curves, ColorRamp, Vector Curves | — | — | carry baked widget data; need a CurveAtlas design |
+| Blackbody, Wavelength | `BL::Blackbody`, `BL::Wavelength` | `Tables.dsh` | ported |
+| ColorRamp, Float Curve, RGB Curves, Vector Curves | `BL::ColorRamp`, `BL::FloatCurve`, `BL::RGBCurves` | `Curves.dsh` | ported, LUT-driven |
 | Texture Coordinate — Camera, Window, Reflection | — | — | need view matrices whose handedness differs; deliberately absent |
 | BSDF closures | — | — | out of scope without Substrate; see below |
 
@@ -198,6 +198,30 @@ entry points (`BL::Tex*`). Extending the harness to those needs more of the Cycl
 shimmed — the `VoronoiParams` struct, the operation enums, `spherical_to_direction`. The hashes and
 colour conversions underneath them *are* verified, which is where the arbitrary constants live.
 See [`Tests/README.md`](Tests/README.md).
+
+### Curves and ramps are table lookups
+
+Worth knowing before reaching for `Curves.dsh`: Blender does not evaluate a spline in the shader.
+The curve widget is baked into a table of N samples when the scene is built, and the kernel does a
+clamped index plus a lerp. Porting them faithfully therefore means reproducing that lookup — not
+reproducing B-spline maths — and getting the table in.
+
+The table arrives as an RGBA `Texture2D` LUT, N texels wide and one tall. Sampling is
+`Texture2DSampleLevel(..., 0)` at exact texel centres with the lerp done in the shader, because
+hardware filtering would interpolate on a half-texel offset upstream does not have, and a mip
+chosen from screen-space derivatives would silently read a different table. Set the LUT to
+Nearest, no mips, clamp.
+
+RGB Curves samples the *same* table three times at different positions and takes a different
+component from each — that is upstream's layout, which is why the LUT has to be RGBA rather than
+three greyscale textures.
+
+`Tables.dsh` is the other half of that story: Blackbody and Wavelength are fits over coefficient
+tables, extracted from `kernel/tables.h` mechanically rather than retyped. Both end by converting
+into the scene's working colour space, and **that is where the port stops being bit-exact** —
+Cycles takes the matrix from the scene's OCIO configuration, so there is no single upstream
+constant to match. The Rec.709 / D65 coefficients here are what both Blender and Unreal use by
+default.
 
 ### Coordinate space
 

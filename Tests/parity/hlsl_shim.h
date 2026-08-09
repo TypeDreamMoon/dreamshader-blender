@@ -264,4 +264,18 @@ inline float3 cross(float3 a, float3 b) {
   return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
 }
 
+// ---- texture stubs -------------------------------------------------------------------------
+//
+// Curves.dsh samples a LUT. Nothing in the parity comparison touches it — a LUT has no upstream
+// counterpart to compare against, the table lives in Blender's bytecode — but the generated
+// include has to compile as a whole, so the type and the sampling macro have to exist. They
+// return zero, and no test reads that zero.
+
+struct SamplerState {};
+struct Texture2D {
+  float4 SampleLevel(SamplerState, float2, float) const { return float4(0.0f); }
+};
+
+#define Texture2DSampleLevel(Tex, Samp, UV, Mip) (Tex).SampleLevel(Samp, UV, Mip)
+
 }  // namespace hlsl

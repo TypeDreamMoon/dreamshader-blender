@@ -1,0 +1,222 @@
+// Blender's Blackbody and Wavelength nodes.
+//
+// Sources: intern/cycles/kernel/svm/math_util.h (the approximations), blackbody.h, wavelength.h
+// and intern/cycles/kernel/tables.h (the coefficients) — Apache-2.0, except blackbody.h and
+// wavelength.h which are BSD-3-Clause. See NOTICE.
+//
+// The tables below were extracted from kernel/tables.h mechanically rather than retyped; 250-odd
+// coefficients is not something to transcribe by hand.
+//
+// ---------------------------------------------------------------------------------------------
+// Where this stops being bit-exact
+//
+// Both nodes end by converting into the scene's working colour space, and Cycles takes that
+// matrix from the scene's OCIO configuration — there is no single upstream constant to match. The
+// conversions here are the standard Rec.709 / D65 ones, which is what both Blender and Unreal use
+// by default. A project on a different working space needs a different matrix, and the parity
+// harness cannot settle this one for you.
+
+import "Hash.dsh";
+
+// ---------------------------------------------------------------------------------------------
+// Blackbody
+//
+// An a/x + bx + c fit for R and G and a cubic for B, valid over 800..12000 K in seven segments.
+// Outside that range upstream returns fixed endpoints; the low one is described as arbitrary,
+// chosen to match OSL. The result can be negative — that is deliberate, it supports a gamut wider
+// than Rec.709 — so the node clamps at the end rather than the fit doing it.
+// ---------------------------------------------------------------------------------------------
+
+Function BLTables_blackbody_rec709(in float t, out float3 result)
+{
+    if (t >= 12000.0) {
+        result = float3(0.8262954810464208, 0.9945080501520986, 1.566307710274283);
+    }
+    else if (t < 800.0) {
+        result = float3(5.413294490189271, -0.20319390035873933, -0.0822535242887164);
+    }
+    else {
+        static const float3 tableR[7] = {
+        float3(1.61919106e+03f, -2.05010916e-03f, 5.02995757e+00f),
+        float3(2.48845471e+03f, -1.11330907e-03f, 3.22621544e+00f),
+        float3(3.34143193e+03f, -4.86551192e-04f, 1.76486769e+00f),
+        float3(4.09461742e+03f, -1.27446582e-04f, 7.25731635e-01f),
+        float3(4.67028036e+03f, 2.91258199e-05f, 1.26703442e-01f),
+        float3(4.59509185e+03f, 2.87495649e-05f, 1.50345020e-01f),
+        float3(3.78717450e+03f, 9.35907826e-06f, 3.99075871e-01f),
+        };
+        static const float3 tableG[7] = {
+        float3(-4.88999748e+02f, 6.04330754e-04f, -7.55807526e-02f),
+        float3(-7.55994277e+02f, 3.16730098e-04f, 4.78306139e-01f),
+        float3(-1.02363977e+03f, 1.20223470e-04f, 9.36662319e-01f),
+        float3(-1.26571316e+03f, 4.87340896e-06f, 1.27054498e+00f),
+        float3(-1.42529332e+03f, -4.01150431e-05f, 1.43972784e+00f),
+        float3(-1.17554822e+03f, -2.16378048e-05f, 1.30408023e+00f),
+        float3(-5.00799571e+02f, -4.59832026e-06f, 1.09098763e+00f),
+        };
+        static const float4 tableB[7] = {
+        float4(5.96945309e-11f, -4.85742887e-08f, -9.70622247e-05f, -4.07936148e-03f),
+        float4(2.40430366e-11f, 5.55021075e-08f, -1.98503712e-04f, 2.89312858e-02f),
+        float4(-1.40949732e-11f, 1.89878968e-07f, -3.56632824e-04f, 9.10767778e-02f),
+        float4(-3.61460868e-11f, 2.84822009e-07f, -4.93211319e-04f, 1.56723440e-01f),
+        float4(-1.97075738e-11f, 1.75359352e-07f, -2.50542825e-04f, -2.22783266e-02f),
+        float4(-1.61997957e-13f, -1.64216008e-08f, 3.86216271e-04f, -7.38077418e-01f),
+        float4(6.72650283e-13f, -2.73078809e-08f, 4.24098264e-04f, -7.52335691e-01f),
+        };
+
+        int i = (t >= 6365.0) ? 6 :
+                (t >= 3315.0) ? 5 :
+                (t >= 1902.0) ? 4 :
+                (t >= 1449.0) ? 3 :
+                (t >= 1167.0) ? 2 :
+                (t >=  965.0) ? 1 : 0;
+
+        float3 r = tableR[i];
+        float3 g = tableG[i];
+        float4 b = tableB[i];
+
+        float tInv = 1.0 / t;
+        result = float3(r.x * tInv + r.y * t + r.z,
+                        g.x * tInv + g.y * t + g.z,
+                        ((b.x * t + b.y) * t + b.z) * t + b.w);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Wavelength
+//
+// The CIE 1931 colour matching functions at 5 nm steps from 380 nm. Upstream indexes the flat
+// array and reads six floats from row i, which walks into row i+1 — so the lerp is between
+// adjacent samples, and the table needs the extra 81st row to make that legal at i == 79.
+// ---------------------------------------------------------------------------------------------
+
+Function BLTables_wavelength_xyz(in float lambdaNm, out float3 result)
+{
+    float ii = (lambdaNm - 380.0) * (1.0 / 5.0);   // scaled 0..80
+    int i = int(ii);
+
+    if (i < 0 || i >= 80) {
+        result = float3(0.0, 0.0, 0.0);
+    }
+    else {
+        static const float3 cie[81] = {
+        float3(0.0014f, 0.0000f, 0.0065f),
+        float3(0.0022f, 0.0001f, 0.0105f),
+        float3(0.0042f, 0.0001f, 0.0201f),
+        float3(0.0076f, 0.0002f, 0.0362f),
+        float3(0.0143f, 0.0004f, 0.0679f),
+        float3(0.0232f, 0.0006f, 0.1102f),
+        float3(0.0435f, 0.0012f, 0.2074f),
+        float3(0.0776f, 0.0022f, 0.3713f),
+        float3(0.1344f, 0.0040f, 0.6456f),
+        float3(0.2148f, 0.0073f, 1.0391f),
+        float3(0.2839f, 0.0116f, 1.3856f),
+        float3(0.3285f, 0.0168f, 1.6230f),
+        float3(0.3483f, 0.0230f, 1.7471f),
+        float3(0.3481f, 0.0298f, 1.7826f),
+        float3(0.3362f, 0.0380f, 1.7721f),
+        float3(0.3187f, 0.0480f, 1.7441f),
+        float3(0.2908f, 0.0600f, 1.6692f),
+        float3(0.2511f, 0.0739f, 1.5281f),
+        float3(0.1954f, 0.0910f, 1.2876f),
+        float3(0.1421f, 0.1126f, 1.0419f),
+        float3(0.0956f, 0.1390f, 0.8130f),
+        float3(0.0580f, 0.1693f, 0.6162f),
+        float3(0.0320f, 0.2080f, 0.4652f),
+        float3(0.0147f, 0.2586f, 0.3533f),
+        float3(0.0049f, 0.3230f, 0.2720f),
+        float3(0.0024f, 0.4073f, 0.2123f),
+        float3(0.0093f, 0.5030f, 0.1582f),
+        float3(0.0291f, 0.6082f, 0.1117f),
+        float3(0.0633f, 0.7100f, 0.0782f),
+        float3(0.1096f, 0.7932f, 0.0573f),
+        float3(0.1655f, 0.8620f, 0.0422f),
+        float3(0.2257f, 0.9149f, 0.0298f),
+        float3(0.2904f, 0.9540f, 0.0203f),
+        float3(0.3597f, 0.9803f, 0.0134f),
+        float3(0.4334f, 0.9950f, 0.0087f),
+        float3(0.5121f, 1.0000f, 0.0057f),
+        float3(0.5945f, 0.9950f, 0.0039f),
+        float3(0.6784f, 0.9786f, 0.0027f),
+        float3(0.7621f, 0.9520f, 0.0021f),
+        float3(0.8425f, 0.9154f, 0.0018f),
+        float3(0.9163f, 0.8700f, 0.0017f),
+        float3(0.9786f, 0.8163f, 0.0014f),
+        float3(1.0263f, 0.7570f, 0.0011f),
+        float3(1.0567f, 0.6949f, 0.0010f),
+        float3(1.0622f, 0.6310f, 0.0008f),
+        float3(1.0456f, 0.5668f, 0.0006f),
+        float3(1.0026f, 0.5030f, 0.0003f),
+        float3(0.9384f, 0.4412f, 0.0002f),
+        float3(0.8544f, 0.3810f, 0.0002f),
+        float3(0.7514f, 0.3210f, 0.0001f),
+        float3(0.6424f, 0.2650f, 0.0000f),
+        float3(0.5419f, 0.2170f, 0.0000f),
+        float3(0.4479f, 0.1750f, 0.0000f),
+        float3(0.3608f, 0.1382f, 0.0000f),
+        float3(0.2835f, 0.1070f, 0.0000f),
+        float3(0.2187f, 0.0816f, 0.0000f),
+        float3(0.1649f, 0.0610f, 0.0000f),
+        float3(0.1212f, 0.0446f, 0.0000f),
+        float3(0.0874f, 0.0320f, 0.0000f),
+        float3(0.0636f, 0.0232f, 0.0000f),
+        float3(0.0468f, 0.0170f, 0.0000f),
+        float3(0.0329f, 0.0119f, 0.0000f),
+        float3(0.0227f, 0.0082f, 0.0000f),
+        float3(0.0158f, 0.0057f, 0.0000f),
+        float3(0.0114f, 0.0041f, 0.0000f),
+        float3(0.0081f, 0.0029f, 0.0000f),
+        float3(0.0058f, 0.0021f, 0.0000f),
+        float3(0.0041f, 0.0015f, 0.0000f),
+        float3(0.0029f, 0.0010f, 0.0000f),
+        float3(0.0020f, 0.0007f, 0.0000f),
+        float3(0.0014f, 0.0005f, 0.0000f),
+        float3(0.0010f, 0.0004f, 0.0000f),
+        float3(0.0007f, 0.0002f, 0.0000f),
+        float3(0.0005f, 0.0002f, 0.0000f),
+        float3(0.0003f, 0.0001f, 0.0000f),
+        float3(0.0002f, 0.0001f, 0.0000f),
+        float3(0.0002f, 0.0001f, 0.0000f),
+        float3(0.0001f, 0.0000f, 0.0000f),
+        float3(0.0001f, 0.0000f, 0.0000f),
+        float3(0.0001f, 0.0000f, 0.0000f),
+        float3(0.0000f, 0.0000f, 0.0000f),
+        };
+
+        float f = ii - float(i);
+        float3 a = cie[i];
+        float3 b = cie[i + 1];
+        result = a + f * (b - a);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------------------------
+
+Namespace(Name = "BL")
+{
+    Function Blackbody(in float temperature, out float3 color)
+    {
+        // rec709_to_rgb is identity on a Rec.709 working space, which is Unreal's default.
+        float3 c = BLTables_blackbody_rec709(temperature);
+        color = max(c, float3(0.0, 0.0, 0.0));
+    }
+
+    Function Wavelength(in float wavelength, out float3 color)
+    {
+        float3 xyz = BLTables_wavelength_xyz(wavelength);
+
+        // XYZ to linear Rec.709 (D65). Cycles takes this from the scene colour config; these are
+        // the standard coefficients for the default configuration.
+        float3 rgb = float3(
+             3.2404542 * xyz.x - 1.5371385 * xyz.y - 0.4985314 * xyz.z,
+            -0.9692660 * xyz.x + 1.8760108 * xyz.y + 0.0415560 * xyz.z,
+             0.0556434 * xyz.x - 0.2040259 * xyz.y + 1.0572252 * xyz.z);
+
+        // Upstream's comment: "Empirical scale from lg to make all comps <= 1".
+        rgb = rgb * (1.0 / 2.52);
+
+        color = max(rgb, float3(0.0, 0.0, 0.0));
+    }
+}

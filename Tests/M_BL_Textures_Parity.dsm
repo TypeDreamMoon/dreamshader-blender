@@ -75,6 +75,16 @@ Shader(Name = "Blender/M_BL_Textures_Parity")
         ScalarParameter VorExponent = 0.5 [
             Group="Voronoi | Inputs"; SortPriority=180;
         ];
+        TextureObjectParameter CurveLut = Path(Engine, "EngineResources/WhiteSquareTexture") [
+            Group="Curves | Inputs"; SortPriority=310;
+            Description="1 x N RGBA LUT holding the baked curve or ramp";
+        ];
+        ScalarParameter LutSize = 32.0 [
+            Group="Curves | Inputs"; SortPriority=320;
+        ];
+        ScalarParameter CurveExtrapolate = 0.0 [
+            Group="Curves | Options"; SortPriority=330;
+        ];
         ScalarParameter MathOp = 0.0 [
             Group="Converter | Options"; SortPriority=230;
         ];
@@ -285,10 +295,19 @@ Shader(Name = "Blender/M_BL_Textures_Parity")
         BL::CoordNormal(NrmCo);
         BL::ToUnrealPoint(ObjCo, UnitScale, BackCo);
 
+        // Blackbody, Wavelength and the curve lookups.
+        BL::Blackbody(uv.x * 12000.0, BbCol);
+        BL::Wavelength(380.0 + uv.y * 400.0, WlCol);
+        BL::ColorRamp(CurveLut, uv.x, LutSize, 1.0, RampCol, RampA);
+        BL::FloatCurve(CurveLut, 1.0, uv.y, 0.0, 1.0, LutSize, CurveExtrapolate, FcV);
+        BL::RGBCurves(CurveLut, 1.0, p, 0.0, 1.0, LutSize, CurveExtrapolate, RcCol);
+
+        float3 curveAcc = BbCol + WlCol + RampCol + RcCol + float3(RampA, FcV, 0.0);
+
         float3 convAcc = float3(MathV, MapV, ClampV) + float3(VecMathVal, BwV, NrmDot)
                        + VecMathVec + MixCol + BcCol + GamCol + HsvCol + InvCol + CombCol
                        + MapVec + RotVec + NrmVec + CombVec
-                       + GenCo + ObjCo + UvCo + NrmCo + BackCo;
+                       + GenCo + ObjCo + UvCo + NrmCo + BackCo + curveAcc;
 
         float3 noiseFacs = float3(NFac1, NFac2, NFac4);
         float3 typedFacs = float3(TFac1, TFac2, TFac4);

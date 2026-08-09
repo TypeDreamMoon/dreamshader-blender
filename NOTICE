@@ -94,8 +94,26 @@ The upstream licence of each ported file, as declared by its own SPDX header:
       SPDX-License-Identifier: Apache-2.0
       -> Library/Vector.dsh (euler_to_transform, rotate_around_axis, the safe_* helpers)
 
+  intern/cycles/kernel/tables.h
+      SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+      SPDX-License-Identifier: Apache-2.0
+      -> Library/Tables.dsh (the blackbody fit coefficients and the CIE 1931 table,
+         extracted mechanically rather than retyped)
+
+  intern/cycles/kernel/svm/blackbody.h
+  intern/cycles/kernel/svm/wavelength.h
+      SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+      SPDX-License-Identifier: BSD-3-Clause
+      -> Library/Tables.dsh (the node bodies)
+
+  intern/cycles/kernel/svm/ramp.h
+  intern/cycles/kernel/svm/ramp_util.h
+      SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+      SPDX-License-Identifier: Apache-2.0
+      -> Library/Curves.dsh
+
 --------------------------------------------------------------------------------
-BSD-3-Clause (Open Shading Language derived code)
+BSD-3-Clause (Open Shading Language derived code; also blackbody.h and wavelength.h)
 --------------------------------------------------------------------------------
 
 Copyright (c) 2009-2010 Sony Pictures Imageworks Inc., et al.

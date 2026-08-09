@@ -20,3 +20,5 @@ import "Math.dsh";
 import "Color.dsh";
 import "Vector.dsh";
 import "Space.dsh";
+import "Tables.dsh";
+import "Curves.dsh";

@@ -1,0 +1,139 @@
+// Blender's ColorRamp, Float Curve, RGB Curves and Vector Curves.
+//
+// Sources: intern/cycles/kernel/svm/ramp.h and ramp_util.h — Apache-2.0. See NOTICE.
+//
+// ---------------------------------------------------------------------------------------------
+// These four are table lookups, not analytic curves
+//
+// That is the thing to understand before reading the rest. Blender does not evaluate a spline in
+// the shader: the curve widget is baked into a table of `tableSize` samples at scene-build time,
+// and the kernel does a clamped index plus a lerp. So porting them faithfully is not a question of
+// reproducing B-spline maths — it is a question of reproducing that lookup exactly, and of getting
+// the table in.
+//
+// The table arrives as a Texture2D LUT. `tableSize` texels wide, one tall, texel i holding sample
+// i. RGB Curves needs RGBA (one curve per channel, all three sampled from the same table at
+// different positions — which is upstream's layout, not a convenience); Float Curve uses the red
+// channel; ColorRamp uses all four, alpha included.
+//
+// Sampling is `Texture2DSampleLevel(..., 0)` at exact texel centres, and the lerp between
+// neighbours is done here rather than by the sampler. Two reasons, both about fidelity rather
+// than taste: hardware filtering would put the interpolation on a half-texel offset that upstream
+// does not have, and a mip selected from screen-space derivatives would silently read a different
+// table. Set the LUT to Nearest / no mips / clamp; with sampling pinned to mip 0 at texel centres
+// the filter setting cannot change the result, but a mip chain wastes memory.
+//
+// ---------------------------------------------------------------------------------------------
+// Extrapolation
+//
+// Below 0 and above 1 the lookup does not clamp — it continues the line through the outermost two
+// samples. ColorRamp passes `extrapolate = false` and so does clamp; the three Curves nodes pass
+// the node's own Extrapolate setting. The two paths are genuinely different and both are here.
+
+import "Hash.dsh";
+
+Function BLCurves_fetch(in Texture2D lut, in float i, in float tableSize, out float4 result)
+{
+    float u = (i + 0.5) / tableSize;
+    result = Texture2DSampleLevel(lut, lutSampler, float2(u, 0.5), 0.0);
+}
+
+// rgb_ramp_lookup, over a LUT texture instead of the SVM bytecode.
+Function BLCurves_ramp_lookup(in Texture2D lut, in float f, in float interpolate,
+                        in float extrapolate, in float tableSize, out float4 result)
+{
+    float last = tableSize - 1.0;
+
+    if ((f < 0.0 || f > 1.0) && extrapolate != 0.0) {
+        float4 t0;
+        float4 dy;
+        float g = f;
+
+        if (f < 0.0) {
+            float4 a = BLCurves_fetch(lut, 0.0, tableSize);
+            float4 b = BLCurves_fetch(lut, 1.0, tableSize);
+            t0 = a;
+            dy = a - b;
+            g = -f;
+        }
+        else {
+            float4 a = BLCurves_fetch(lut, last, tableSize);
+            float4 b = BLCurves_fetch(lut, last - 1.0, tableSize);
+            t0 = a;
+            dy = a - b;
+            g = f - 1.0;
+        }
+
+        result = t0 + dy * g * last;
+    }
+    else {
+        float p = saturate(f) * last;
+
+        // Upstream clamps the integer as well, explicitly against NaN.
+        float i = clamp(floor(p), 0.0, last);
+        float t = p - i;
+
+        float4 a = BLCurves_fetch(lut, i, tableSize);
+
+        if (interpolate != 0.0 && t > 0.0) {
+            float4 b = BLCurves_fetch(lut, i + 1.0, tableSize);
+            a = (1.0 - t) * a + t * b;
+        }
+
+        result = a;
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------------------------
+
+Namespace(Name = "BL")
+{
+    // ColorRamp. `interpolate` is the ramp's Constant-vs-anything-else switch: Blender bakes Ease,
+    // Cardinal, Linear and B-Spline into the table, so by the time the shader sees it the only
+    // distinction left is whether to lerp between samples at all.
+    //
+    // Extrapolation is off, as upstream hard-codes for this node.
+    Function ColorRamp(in Texture2D lut, in float fac, in float tableSize, in float interpolate,
+                       out float3 color, out float alpha)
+    {
+        float4 c = BLCurves_ramp_lookup(lut, fac, interpolate, 0.0, tableSize);
+        color = c.xyz;
+        alpha = c.w;
+    }
+
+    // Float Curve. `minX`/`maxX` are the curve widget's X range, which Blender stores on the node
+    // and which the table is baked across.
+    Function FloatCurve(in Texture2D lut, in float fac, in float value, in float minX,
+                        in float maxX, in float tableSize, in float extrapolate,
+                        out float result)
+    {
+        float range = maxX - minX;
+        float relpos = (value - minX) / range;
+
+        float4 v = BLCurves_ramp_lookup(lut, relpos, 1.0, extrapolate, tableSize);
+
+        result = (1.0 - fac) * value + fac * v.x;
+    }
+
+    // RGB Curves, and Vector Curves, which is the same node over a vector.
+    //
+    // Each channel is looked up at its *own* position but takes its own component out of the
+    // shared table — three lookups into one LUT, not three separate LUTs. That is upstream's
+    // layout and it is why the LUT has to be RGBA rather than three greyscale textures.
+    Function RGBCurves(in Texture2D lut, in float fac, in float3 color, in float minX,
+                       in float maxX, in float tableSize, in float extrapolate,
+                       out float3 result)
+    {
+        float range = maxX - minX;
+        float3 relpos = (color - float3(minX, minX, minX)) / range;
+
+        float4 cr = BLCurves_ramp_lookup(lut, relpos.x, 1.0, extrapolate, tableSize);
+        float4 cg = BLCurves_ramp_lookup(lut, relpos.y, 1.0, extrapolate, tableSize);
+        float4 cb = BLCurves_ramp_lookup(lut, relpos.z, 1.0, extrapolate, tableSize);
+
+        float3 mapped = float3(cr.x, cg.y, cb.z);
+        result = (1.0 - fac) * color + fac * mapped;
+    }
+}
