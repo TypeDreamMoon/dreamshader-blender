@@ -167,8 +167,30 @@ Known differences you have to handle yourself:
 - **`Fac` is linear.** Bind it to an Unlit emissive for comparison; a lit material or a tonemapped
   view will not match a Blender viewport render.
 
-Parity is not yet verified against reference renders — see [`Tests/README.md`](Tests/README.md).
-Until it is, treat "faithful" above as "ported carefully", not as "measured".
+### Measured
+
+The noise family is verified **bit-exact against upstream Cycles**, not by eye and not against a
+render. `Tests/parity` compiles the generated `.ush` as C++ through a small HLSL shim, compiles
+`util/hash.h`, `kernel/svm/noise.h` and `kernel/svm/fractal_noise.h` from the Blender repository
+verbatim beside it, and compares them function by function over 20 000 inputs each — small, large,
+negative, and deliberately sitting on cell boundaries where a sign or rounding mistake would hide.
+
+| covered | worst difference |
+| :-- | :-- |
+| `hash_uint` 1–4, `hash_float*_to_float`, PCG `hash_int*_to_float*` | 0 ulp |
+| `perlin_1d` … `perlin_4d`, `snoise_1d` … `snoise_4d` | 0 ulp |
+| `fbm_1d` … `fbm_4d`, normalized and not | 0 ulp |
+| Multifractal, Hetero Terrain, Hybrid, Ridged | 0 ulp |
+
+Upstream is the oracle rather than a second transcription, so a wrong constant surfaces as a
+mismatch instead of being reproduced identically on both sides. The harness is mutation-tested:
+changing `0.9820` to `0.9821` in one function fails exactly the seven checks that depend on 3D
+snoise and leaves 1D, 2D, 4D and the hashes green.
+
+**Not yet covered:** Voronoi and Gabor, and the node-level entry points (`BL::Tex*`). Extending
+the harness to those needs more of the Cycles platform layer shimmed — the `VoronoiParams` struct,
+the feature enums, `spherical_to_direction`. The hashes underneath them *are* verified, which is
+where the arbitrary constants live. See [`Tests/README.md`](Tests/README.md).
 
 ## Porting rules
 

@@ -3,6 +3,10 @@
 /Saved/
 dreamshader.lock.json
 
+# Parity harness: fetched upstream headers and build products.
+/Tests/parity/cache/
+/Tests/parity/build/
+
 # Golden-image test data. Reference renders are large and are regenerated from Blender;
 # keep them out of the package and point Tests/README.md at wherever they live.
 /Tests/_out/
