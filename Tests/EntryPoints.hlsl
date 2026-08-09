@@ -107,3 +107,79 @@ float4 EP_NonNoise(float2 uv : TEXCOORD0, float4 knobs : TEXCOORD1) : SV_Target
     return float4(c0 + c1 + c2 + c3 + c4 + c5 + c6 + c7 + c8,
                   f0 + f1 + f2 + f3 + f4 + f5 + f6 + f7 + f8);
 }
+
+// SM5 passes 4-7: Voronoi, split by dimension because the cell window is (2r+1)^N per octave.
+// Smooth F1 in 4D gets its own entry — 625 cells against F1's 81 — so a regression there is
+// attributable and does not drag the other four features' compile time with it.
+
+float4 EP_Voronoi2D(float2 uv : TEXCOORD0, float3 knobs : TEXCOORD1) : SV_Target
+{
+    float metric = knobs.x;
+    float w = knobs.y;
+    float3 p = float3(uv, 0.0);
+    float3 vc1, vp1; float vw1;
+    float v1 = DreamShaderFn_BL_TexVoronoiF1_2D(uv, 5.0, 2.5, 0.5, 2.0, 1.0, metric, 0.5, 1.0, vc1, vp1, vw1);
+    float3 vc2, vp2; float vw2;
+    float v2 = DreamShaderFn_BL_TexVoronoiSmoothF1_2D(uv, 5.0, 2.5, 0.5, 2.0, 1.0, 1.0, metric, 0.5, 1.0, vc2, vp2, vw2);
+    float3 vc3, vp3; float vw3;
+    float v3 = DreamShaderFn_BL_TexVoronoiF2_2D(uv, 5.0, 2.5, 0.5, 2.0, 1.0, metric, 0.5, 1.0, vc3, vp3, vw3);
+    float v4 = DreamShaderFn_BL_TexVoronoiDistToEdge_2D(uv, 5.0, 2.5, 0.5, 2.0, 1.0, 1.0);
+    float v5 = DreamShaderFn_BL_TexVoronoiRadius_2D(uv, 5.0, 1.0);
+    return float4(vc1 + vp1 + vc2 + vp2 + vc3 + vp3, v1 + v2 + v3 + v4 + v5 + vw1 + vw2 + vw3);
+}
+
+float4 EP_Voronoi3D(float2 uv : TEXCOORD0, float3 knobs : TEXCOORD1) : SV_Target
+{
+    float metric = knobs.x;
+    float w = knobs.y;
+    float3 p = float3(uv, 0.0);
+    float3 vc1, vp1; float vw1;
+    float v1 = DreamShaderFn_BL_TexVoronoiF1_3D(p, 5.0, 2.5, 0.5, 2.0, 1.0, metric, 0.5, 1.0, vc1, vp1, vw1);
+    float3 vc2, vp2; float vw2;
+    float v2 = DreamShaderFn_BL_TexVoronoiSmoothF1_3D(p, 5.0, 2.5, 0.5, 2.0, 1.0, 1.0, metric, 0.5, 1.0, vc2, vp2, vw2);
+    float3 vc3, vp3; float vw3;
+    float v3 = DreamShaderFn_BL_TexVoronoiF2_3D(p, 5.0, 2.5, 0.5, 2.0, 1.0, metric, 0.5, 1.0, vc3, vp3, vw3);
+    float v4 = DreamShaderFn_BL_TexVoronoiDistToEdge_3D(p, 5.0, 2.5, 0.5, 2.0, 1.0, 1.0);
+    float v5 = DreamShaderFn_BL_TexVoronoiRadius_3D(p, 5.0, 1.0);
+    return float4(vc1 + vp1 + vc2 + vp2 + vc3 + vp3, v1 + v2 + v3 + v4 + v5 + vw1 + vw2 + vw3);
+}
+
+float4 EP_Voronoi4D_Fast(float2 uv : TEXCOORD0, float3 knobs : TEXCOORD1) : SV_Target
+{
+    float metric = knobs.x;
+    float w = knobs.y;
+    float3 p = float3(uv, 0.0);
+    float3 vc1, vp1; float vw1;
+    float v1 = DreamShaderFn_BL_TexVoronoiF1_4D(p, w, 5.0, 2.5, 0.5, 2.0, 1.0, metric, 0.5, 1.0, vc1, vp1, vw1);
+    float3 vc2, vp2; float vw2;
+    float v2 = DreamShaderFn_BL_TexVoronoiF2_4D(p, w, 5.0, 2.5, 0.5, 2.0, 1.0, metric, 0.5, 1.0, vc2, vp2, vw2);
+    float v3 = DreamShaderFn_BL_TexVoronoiDistToEdge_4D(p, w, 5.0, 2.5, 0.5, 2.0, 1.0, 1.0);
+    float v4 = DreamShaderFn_BL_TexVoronoiRadius_4D(p, w, 5.0, 1.0);
+    return float4(vc1 + vp1 + vc2 + vp2, v1 + v2 + v3 + v4 + vw1 + vw2);
+}
+
+float4 EP_Voronoi4D_Smooth(float2 uv : TEXCOORD0, float3 knobs : TEXCOORD1) : SV_Target
+{
+    float metric = knobs.x;
+    float w = knobs.y;
+    float3 p = float3(uv, 0.0);
+    float3 vc1, vp1; float vw1;
+    float v1 = DreamShaderFn_BL_TexVoronoiSmoothF1_4D(p, w, 5.0, 2.5, 0.5, 2.0, 1.0, 1.0, metric, 0.5, 1.0, vc1, vp1, vw1);
+    return float4(vc1 + vp1, v1 + vw1);
+}
+
+float4 EP_Voronoi1D(float2 uv : TEXCOORD0, float3 knobs : TEXCOORD1) : SV_Target
+{
+    float metric = knobs.x;
+    float w = knobs.y;
+    float3 p = float3(uv, 0.0);
+    float3 vc1, vp1; float vw1;
+    float v1 = DreamShaderFn_BL_TexVoronoiF1_1D(uv.x, 5.0, 2.5, 0.5, 2.0, 1.0, metric, 0.5, 1.0, vc1, vp1, vw1);
+    float3 vc2, vp2; float vw2;
+    float v2 = DreamShaderFn_BL_TexVoronoiSmoothF1_1D(uv.x, 5.0, 2.5, 0.5, 2.0, 1.0, 1.0, metric, 0.5, 1.0, vc2, vp2, vw2);
+    float3 vc3, vp3; float vw3;
+    float v3 = DreamShaderFn_BL_TexVoronoiF2_1D(uv.x, 5.0, 2.5, 0.5, 2.0, 1.0, metric, 0.5, 1.0, vc3, vp3, vw3);
+    float v4 = DreamShaderFn_BL_TexVoronoiDistToEdge_1D(uv.x, 5.0, 2.5, 0.5, 2.0, 1.0, 1.0);
+    float v5 = DreamShaderFn_BL_TexVoronoiRadius_1D(uv.x, 5.0, 1.0);
+    return float4(vc1 + vp1 + vc2 + vp2 + vc3 + vp3, v1 + v2 + v3 + v4 + v5 + vw1 + vw2 + vw3);
+}

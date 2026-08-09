@@ -133,22 +133,35 @@ try {
         return $true
     }
 
-    # SM6 first: dxc keeps real function calls in DXIL, so one pass over every entry point is both
-    # the broadest coverage available and the cheapest thing here.
+    # Entry points are discovered, not listed: adding a node means adding a function to
+    # EntryPoints.hlsl and nothing else.
+    $entryPoints = [regex]::Matches(
+        (Get-Content -LiteralPath $entry -Raw),
+        '(?m)^\s*float4\s+(\w+)\s*\(') | ForEach-Object { $_.Groups[1].Value }
+
+    if (-not $entryPoints) { throw "No 'float4 <name>(' entry points found in $entry." }
+    Write-Host ("entries : {0}" -f ($entryPoints -join ', '))
+
+    # `MainPS` is the union of every public call. It is the broadest single check available and
+    # dxc takes it in seconds, but fxc measures 508 s on it — DXBC has no function calls, so it
+    # inlines the entire library into one shader. Every other entry point is scoped so that fxc
+    # stays in the sub-second-to-ten-second range, and between them they still reach every
+    # function. -Thorough adds the union back to the SM5 pass.
+    $union = 'MainPS'
+
     if ($dxc) {
         Write-Host "dxc     : $dxc"
-        if (-not (Invoke-Case $dxc 'ps_6_0 all entry points' @(
-            '-nologo', '-T', 'ps_6_0', '-E', 'MainPS', $entry, '-Fo', (Join-Path $temp 'sm6.cso')))) {
-            $failed = $true
+        foreach ($ep in $entryPoints) {
+            if (-not (Invoke-Case $dxc "ps_6_0 $ep" @(
+                '-nologo', '-T', 'ps_6_0', '-E', $ep, $entry, '-Fo', (Join-Path $temp "sm6_$ep.cso")))) {
+                $failed = $true
+            }
         }
     }
 
-    # SM5 is split by entry point. fxc inlines everything, so the union is quadratic-feeling while
-    # these two together still reach every function in the library.
     if ($fxc) {
         Write-Host "fxc     : $fxc"
-        $sm5 = @('EP_Fbm4D', 'EP_Typed3D_Dynamic', 'EP_NonNoise')
-        if ($Thorough) { $sm5 += 'MainPS' }
+        $sm5 = $entryPoints | Where-Object { $Thorough -or $_ -ne $union }
 
         foreach ($ep in $sm5) {
             if (-not (Invoke-Case $fxc "ps_5_0 $ep" @(

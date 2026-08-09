@@ -66,6 +66,19 @@ Shader(Name = "Blender/M_BL_Textures_Parity")
         ScalarParameter MagicDepth = 2.0 [
             Group="Magic | Options"; SortPriority=150;
         ];
+        ScalarParameter VorRandomness = 1.0 [
+            Group="Voronoi | Inputs"; SortPriority=160;
+        ];
+        ScalarParameter VorSmoothness = 1.0 [
+            Group="Voronoi | Inputs"; SortPriority=170;
+        ];
+        ScalarParameter VorExponent = 0.5 [
+            Group="Voronoi | Inputs"; SortPriority=180;
+        ];
+        ScalarParameter VorMetric = 0.0 [
+            Group="Voronoi | Options"; SortPriority=190;
+            Description="0 Euclidean, 1 Manhattan, 2 Chebychev, 3 Minkowski";
+        ];
     }
 
     Settings = {
@@ -120,6 +133,91 @@ Shader(Name = "Blender/M_BL_Textures_Parity")
         BL::TexBrick(p, white, grey, black, Scale, 0.02, 0.1, 0.0, 0.5, 0.25,
                      0.5, 2.0, 1.0, 2.0, BrkFac, BrkCol);
 
+
+        // Voronoi — every feature, every dimension. Metric stays dynamic.
+        VAcc = 0.0;
+        VCol = float3(0.0, 0.0, 0.0);
+        BL::TexVoronoiF1_1D(uv.x, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD1, VC1, VP1, VW1);
+        VAcc = VAcc + VD1 + VW1;
+        VCol = VCol + VC1 + VP1;
+        BL::TexVoronoiSmoothF1_1D(uv.x, Scale, Detail, Roughness, Lacunarity,
+                              VorSmoothness, VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD2, VC2, VP2, VW2);
+        VAcc = VAcc + VD2 + VW2;
+        VCol = VCol + VC2 + VP2;
+        BL::TexVoronoiF2_1D(uv.x, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD3, VC3, VP3, VW3);
+        VAcc = VAcc + VD3 + VW3;
+        VCol = VCol + VC3 + VP3;
+        BL::TexVoronoiDistToEdge_1D(uv.x, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, NormalizeOutput, VD4);
+        VAcc = VAcc + VD4;
+        BL::TexVoronoiRadius_1D(uv.x, Scale, VorRandomness, VD5);
+        VAcc = VAcc + VD5;
+        BL::TexVoronoiF1_2D(uv, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD6, VC6, VP6, VW6);
+        VAcc = VAcc + VD6 + VW6;
+        VCol = VCol + VC6 + VP6;
+        BL::TexVoronoiSmoothF1_2D(uv, Scale, Detail, Roughness, Lacunarity,
+                              VorSmoothness, VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD7, VC7, VP7, VW7);
+        VAcc = VAcc + VD7 + VW7;
+        VCol = VCol + VC7 + VP7;
+        BL::TexVoronoiF2_2D(uv, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD8, VC8, VP8, VW8);
+        VAcc = VAcc + VD8 + VW8;
+        VCol = VCol + VC8 + VP8;
+        BL::TexVoronoiDistToEdge_2D(uv, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, NormalizeOutput, VD9);
+        VAcc = VAcc + VD9;
+        BL::TexVoronoiRadius_2D(uv, Scale, VorRandomness, VD10);
+        VAcc = VAcc + VD10;
+        BL::TexVoronoiF1_3D(p, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD11, VC11, VP11, VW11);
+        VAcc = VAcc + VD11 + VW11;
+        VCol = VCol + VC11 + VP11;
+        BL::TexVoronoiSmoothF1_3D(p, Scale, Detail, Roughness, Lacunarity,
+                              VorSmoothness, VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD12, VC12, VP12, VW12);
+        VAcc = VAcc + VD12 + VW12;
+        VCol = VCol + VC12 + VP12;
+        BL::TexVoronoiF2_3D(p, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD13, VC13, VP13, VW13);
+        VAcc = VAcc + VD13 + VW13;
+        VCol = VCol + VC13 + VP13;
+        BL::TexVoronoiDistToEdge_3D(p, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, NormalizeOutput, VD14);
+        VAcc = VAcc + VD14;
+        BL::TexVoronoiRadius_3D(p, Scale, VorRandomness, VD15);
+        VAcc = VAcc + VD15;
+        BL::TexVoronoiF1_4D(p, WCoord, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD16, VC16, VP16, VW16);
+        VAcc = VAcc + VD16 + VW16;
+        VCol = VCol + VC16 + VP16;
+        BL::TexVoronoiSmoothF1_4D(p, WCoord, Scale, Detail, Roughness, Lacunarity,
+                              VorSmoothness, VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD17, VC17, VP17, VW17);
+        VAcc = VAcc + VD17 + VW17;
+        VCol = VCol + VC17 + VP17;
+        BL::TexVoronoiF2_4D(p, WCoord, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, VorMetric, VorExponent, NormalizeOutput,
+                              VD18, VC18, VP18, VW18);
+        VAcc = VAcc + VD18 + VW18;
+        VCol = VCol + VC18 + VP18;
+        BL::TexVoronoiDistToEdge_4D(p, WCoord, Scale, Detail, Roughness, Lacunarity,
+                              VorRandomness, NormalizeOutput, VD19);
+        VAcc = VAcc + VD19;
+        BL::TexVoronoiRadius_4D(p, WCoord, Scale, VorRandomness, VD20);
+        VAcc = VAcc + VD20;
+
         float3 noiseFacs = float3(NFac1, NFac2, NFac4);
         float3 typedFacs = float3(TFac1, TFac2, TFac4);
         float3 whiteFacs = float3(WFac1, WFac2, WFac4);
@@ -131,6 +229,6 @@ Shader(Name = "Blender/M_BL_Textures_Parity")
         float3 cols2 = WCol1 + WCol2 + WCol3 + WCol4 + ChkCol + GrdCol + MagCol + WavCol + BrkCol;
 
         EmissiveColor = (noiseFacs + typedFacs + whiteFacs + otherFacs + tailFacs + restFacs
-                        + cols + cols2) * 0.02;
+                        + cols + cols2 + VCol + float3(VAcc, VAcc, VAcc)) * 0.01;
     }
 }

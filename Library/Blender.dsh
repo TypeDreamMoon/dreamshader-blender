@@ -14,3 +14,4 @@ import "Gradient.dsh";
 import "Magic.dsh";
 import "Wave.dsh";
 import "Brick.dsh";
+import "Voronoi.dsh";

@@ -152,6 +152,87 @@ Function BLHash_float4_to_float(in float4 k, out float result)
     result = BLHash_uint_to_float_incl(h);
 }
 
+// ---------------------------------------------------------------------------------------------
+// PCG 2D / 3D / 4D
+//
+// From "Hash Functions for GPU Rendering", JCGT 2020. Upstream modified them to use only *signed*
+// integers so the same hash is expressible in OSL, and that is not cosmetic: `v >> 16` on a signed
+// int is an arithmetic shift, and these are declared `int` here for exactly that reason. Switching
+// to uint would silently change every Voronoi cell.
+//
+// The wraparound in the multiplies is intended — upstream marks these functions as
+// overflow-ignoring. HLSL int arithmetic already wraps.
+// ---------------------------------------------------------------------------------------------
+
+Function BLHash_pcg2d_i(in int2 k, out int2 result)
+{
+    int2 v = k * 1664525 + 1013904223;
+    v.x += v.y * 1664525;
+    v.y += v.x * 1664525;
+    v = v ^ (v >> 16);
+    v.x += v.y * 1664525;
+    v.y += v.x * 1664525;
+    result = v & 0x7FFFFFFF;
+}
+
+Function BLHash_pcg3d_i(in int3 k, out int3 result)
+{
+    int3 v = k * 1664525 + 1013904223;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v = v ^ (v >> 16);
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    result = v & 0x7FFFFFFF;
+}
+
+Function BLHash_pcg4d_i(in int4 k, out int4 result)
+{
+    int4 v = k * 1664525 + 1013904223;
+    v.x += v.y * v.w;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v.w += v.y * v.z;
+    v = v ^ (v >> 16);
+    v.x += v.y * v.w;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v.w += v.y * v.z;
+    result = v & 0x7FFFFFFF;
+}
+
+// The divisor is 2^31, not 0x7FFFFFFF: upstream divides by `(float)0x7FFFFFFFu`, which rounds up.
+Function BLHash_int2_to_float2(in int2 k, out float2 result)
+{
+    int2 h = BLHash_pcg2d_i(k);
+    result = float2(float(h.x), float(h.y)) * (1.0 / 2147483648.0);
+}
+
+Function BLHash_int3_to_float3(in int3 k, out float3 result)
+{
+    int3 h = BLHash_pcg3d_i(k);
+    result = float3(float(h.x), float(h.y), float(h.z)) * (1.0 / 2147483648.0);
+}
+
+Function BLHash_int4_to_float4(in int4 k, out float4 result)
+{
+    int4 h = BLHash_pcg4d_i(k);
+    result = float4(float(h.x), float(h.y), float(h.z), float(h.w)) * (1.0 / 2147483648.0);
+}
+
+Function BLHash_int2_to_float3(in int2 k, out float3 result)
+{
+    result = BLHash_int3_to_float3(int3(k.x, k.y, 0));
+}
+
+Function BLHash_int4_to_float3(in int4 k, out float3 result)
+{
+    float4 h = BLHash_int4_to_float4(k);
+    result = h.xyz;
+}
+
 // Hashing a float or floatN into a float3 of components in [0, 1].
 //
 // The component recipes look arbitrary because they are: upstream keeps this exact behaviour to

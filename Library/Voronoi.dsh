@@ -1,0 +1,2359 @@
+// Blender's Voronoi Texture node (`ShaderNodeTexVoronoi`).
+//
+// Source: intern/cycles/kernel/svm/voronoi.h — Apache-2.0 at file level, with an embedded
+// MIT-licensed section: "Original code is copyright (c) 2013 Inigo Quilez". Smooth Voronoi and
+// Distance To Edge both derive from that work. See NOTICE.
+//
+// 2D, 3D and 4D are generated from one template (scratchpad gen_voronoi.py in the authoring
+// session) because they are identical modulo loop nesting and vector width. 1D is hand-written:
+// it hashes floats with Jenkins instead of ints with PCG, its distance is a plain abs() with no
+// metric, and its Distance To Edge is a closed form rather than a loop.
+//
+// The 1D entry points still take `metric` and `exponent` so that every dimension shares one
+// signature; they are ignored, exactly as they are in Blender's UI.
+//
+// No runtime Feature dispatcher is shipped, unlike the Noise node's `type`. Feature is an
+// author-time dropdown, and Smooth F1 scans a 5^N window against F1's 3^N — 625 cells per octave
+// in 4D. A dynamic feature would compile every one of those into every material that uses any of
+// them. Pick the entry point you want; use a StaticSwitchParameter if you need to choose in a
+// material instance.
+
+import "Hash.dsh";
+
+// ---------------------------------------------------------------------------------------------
+// 1D
+// ---------------------------------------------------------------------------------------------
+
+Function BLVor_f1_1(in float coord, in float randomness, in float metric, in float exponent,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float cellPosition = floor(coord);
+    float localPosition = coord - cellPosition;
+
+    float minDistance = 3.402823466e+38;
+    float targetOffset = 0.0;
+    float targetPosition = 0.0;
+
+    for (int i = -1; i <= 1; i++) {
+        float cellOffset = float(i);
+        float hp = BLHash_float1_to_float(cellPosition + cellOffset);
+        float pointPosition = cellOffset + hp * randomness;
+        float dp = abs(pointPosition - localPosition);
+        if (dp < minDistance) {
+            targetOffset = cellOffset;
+            minDistance = dp;
+            targetPosition = pointPosition;
+        }
+    }
+
+    // Reported directly, unlike the higher dimensions, which re-measure with the real metric —
+    // in 1D the search distance already is the real distance.
+    outDistance = minDistance;
+    outColor = BLHash_float1_to_float3(cellPosition + targetOffset);
+    outPosition = float4(0.0, 0.0, 0.0, targetPosition + cellPosition);
+}
+
+Function BLVor_smooth_f1_1(in float coord, in float randomness, in float metric,
+                        in float exponent, in float smoothness,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float cellPosition = floor(coord);
+    float localPosition = coord - cellPosition;
+
+    float smoothDistance = 0.0;
+    float smoothPosition = 0.0;
+    float3 smoothColor = float3(0.0, 0.0, 0.0);
+    float h = -1.0;
+
+    for (int i = -2; i <= 2; i++) {
+        float cellOffset = float(i);
+        float hp = BLHash_float1_to_float(cellPosition + cellOffset);
+        float pointPosition = cellOffset + hp * randomness;
+        float dp = abs(pointPosition - localPosition);
+        h = (h == -1.0) ? 1.0
+                        : smoothstep(0.0, 1.0, 0.5 + 0.5 * (smoothDistance - dp) / smoothness);
+        float correction = smoothness * h * (1.0 - h);
+        smoothDistance = lerp(smoothDistance, dp, h) - correction;
+        correction /= 1.0 + 3.0 * smoothness;
+        float3 cellColor = BLHash_float1_to_float3(cellPosition + cellOffset);
+        smoothColor = lerp(smoothColor, cellColor, h) - correction;
+        smoothPosition = lerp(smoothPosition, pointPosition, h) - correction;
+    }
+
+    outDistance = smoothDistance;
+    outColor = smoothColor;
+    outPosition = float4(0.0, 0.0, 0.0, cellPosition + smoothPosition);
+}
+
+Function BLVor_f2_1(in float coord, in float randomness, in float metric, in float exponent,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float cellPosition = floor(coord);
+    float localPosition = coord - cellPosition;
+
+    float distanceF1 = 3.402823466e+38;
+    float distanceF2 = 3.402823466e+38;
+    float offsetF1 = 0.0;
+    float offsetF2 = 0.0;
+    float positionF1 = 0.0;
+    float positionF2 = 0.0;
+
+    for (int i = -1; i <= 1; i++) {
+        float cellOffset = float(i);
+        float hp = BLHash_float1_to_float(cellPosition + cellOffset);
+        float pointPosition = cellOffset + hp * randomness;
+        float dp = abs(pointPosition - localPosition);
+        if (dp < distanceF1) {
+            distanceF2 = distanceF1;
+            distanceF1 = dp;
+            offsetF2 = offsetF1;
+            offsetF1 = cellOffset;
+            positionF2 = positionF1;
+            positionF1 = pointPosition;
+        }
+        else if (dp < distanceF2) {
+            distanceF2 = dp;
+            offsetF2 = cellOffset;
+            positionF2 = pointPosition;
+        }
+    }
+
+    outDistance = distanceF2;
+    outColor = BLHash_float1_to_float3(cellPosition + offsetF2);
+    outPosition = float4(0.0, 0.0, 0.0, positionF2 + cellPosition);
+}
+
+// Closed form in 1D: there are only two bisectors to consider, so upstream skips the loop the
+// other dimensions need.
+Function BLVor_dist_to_edge_1(in float coord, in float randomness, out float result)
+{
+    float cellPosition = floor(coord);
+    float localPosition = coord - cellPosition;
+
+    float hMid = BLHash_float1_to_float(cellPosition);
+    float hLeft = BLHash_float1_to_float(cellPosition - 1.0);
+    float hRight = BLHash_float1_to_float(cellPosition + 1.0);
+
+    float midPointPosition = hMid * randomness;
+    float leftPointPosition = -1.0 + hLeft * randomness;
+    float rightPointPosition = 1.0 + hRight * randomness;
+
+    float distanceToMidLeft = abs((midPointPosition + leftPointPosition) / 2.0 - localPosition);
+    float distanceToMidRight = abs((midPointPosition + rightPointPosition) / 2.0 - localPosition);
+
+    result = min(distanceToMidLeft, distanceToMidRight);
+}
+
+Function BLVor_n_sphere_radius_1(in float coord, in float randomness, out float result)
+{
+    float cellPosition = floor(coord);
+    float localPosition = coord - cellPosition;
+
+    float closestPoint = 0.0;
+    float closestPointOffset = 0.0;
+    float minDistance = 3.402823466e+38;
+
+    for (int i = -1; i <= 1; i++) {
+        float cellOffset = float(i);
+        float hp = BLHash_float1_to_float(cellPosition + cellOffset);
+        float pointPosition = cellOffset + hp * randomness;
+        float dp = abs(pointPosition - localPosition);
+        if (dp < minDistance) {
+            minDistance = dp;
+            closestPoint = pointPosition;
+            closestPointOffset = cellOffset;
+        }
+    }
+
+    minDistance = 3.402823466e+38;
+    float closestToClosest = 0.0;
+
+    for (int j = -1; j <= 1; j++) {
+        if (j != 0) {
+            float cellOffset2 = float(j) + closestPointOffset;
+            float hp2 = BLHash_float1_to_float(cellPosition + cellOffset2);
+            float pointPosition2 = cellOffset2 + hp2 * randomness;
+            float dp2 = abs(closestPoint - pointPosition2);
+            if (dp2 < minDistance) {
+                minDistance = dp2;
+                closestToClosest = pointPosition2;
+            }
+        }
+    }
+
+    result = abs(closestToClosest - closestPoint) / 2.0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// 2D
+// ---------------------------------------------------------------------------------------------
+
+// Metric-aware distance. Minkowski with exponent 1 is Manhattan and with 2 is Euclidean, but the
+// dedicated branches are kept because upstream keeps them — pow() is not bit-identical to the
+// closed forms.
+Function BLVor_distance_2(in float2 a, in float2 b, in float metric, in float exponent,
+                        out float result)
+{
+    float2 dv = abs(a - b);
+    if (metric < 0.5) {
+        result = length(a - b);
+    }
+    else if (metric < 1.5) {
+        result = dv.x + dv.y;
+    }
+    else if (metric < 2.5) {
+        result = max(dv.x, dv.y);
+    }
+    else {
+        float2 pw = pow(dv, exponent);
+        result = pow(pw.x + pw.y, 1.0 / exponent);
+    }
+}
+
+// A monotone stand-in used only to pick the nearest cell, never to report a distance: Euclidean
+// skips the sqrt. Upstream uses it in f1 and n-sphere but *not* in f2, which is an inconsistency
+// worth preserving rather than tidying.
+Function BLVor_distance_bound_2(in float2 a, in float2 b, in float metric, in float exponent,
+                        out float result)
+{
+    float2 dv = abs(a - b);
+    if (metric < 0.5) {
+        float2 e = a - b;
+        result = dot(e, e);
+    }
+    else if (metric < 1.5) {
+        result = dv.x + dv.y;
+    }
+    else if (metric < 2.5) {
+        result = max(dv.x, dv.y);
+    }
+    else {
+        float2 pw = pow(dv, exponent);
+        result = pw.x + pw.y;
+    }
+}
+
+Function BLVor_f1_2(in float2 coord, in float randomness, in float metric, in float exponent,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float2 cellPositionF = floor(coord);
+    float2 localPosition = coord - cellPositionF;
+    int2 cellPosition = int2(cellPositionF);
+
+    float minDistance = 3.402823466e+38;
+    int2 targetOffset = int2(0, 0);
+    float2 targetPosition = float2(0.0, 0.0);
+
+    for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+        int2 cellOffset = int2(i, j);
+        float2 hp = BLHash_int2_to_float2(cellPosition + cellOffset);
+        float2 pointPosition = float2(cellOffset) + hp * randomness;
+        float dp = BLVor_distance_bound_2(pointPosition, localPosition, metric, exponent);
+        if (dp < minDistance) {
+            targetOffset = cellOffset;
+            minDistance = dp;
+            targetPosition = pointPosition;
+        }
+    }}
+
+    outDistance = BLVor_distance_2(targetPosition, localPosition, metric, exponent);
+    outColor = BLHash_int2_to_float3(cellPosition + targetOffset);
+    float2 v = targetPosition + cellPositionF;
+    outPosition = float4(v.x, v.y, 0.0, 0.0);
+}
+
+// Note the window: -2..2, not -1..1. In 2D that is 25 cells per octave against 9
+// for F1, which is most of why Smooth F1 is the expensive feature.
+Function BLVor_smooth_f1_2(in float2 coord, in float randomness, in float metric,
+                        in float exponent, in float smoothness,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float2 cellPositionF = floor(coord);
+    float2 localPosition = coord - cellPositionF;
+    int2 cellPosition = int2(cellPositionF);
+
+    float smoothDistance = 0.0;
+    float3 smoothColor = float3(0.0, 0.0, 0.0);
+    float2 smoothPosition = float2(0.0, 0.0);
+    float h = -1.0;
+
+    for (int j = -2; j <= 2; j++) {
+    for (int i = -2; i <= 2; i++) {
+        int2 cellOffset = int2(i, j);
+        float2 hp = BLHash_int2_to_float2(cellPosition + cellOffset);
+        float2 pointPosition = float2(cellOffset) + hp * randomness;
+        float dp = BLVor_distance_2(pointPosition, localPosition, metric, exponent);
+        h = (h == -1.0) ? 1.0
+                        : smoothstep(0.0, 1.0, 0.5 + 0.5 * (smoothDistance - dp) / smoothness);
+        float correction = smoothness * h * (1.0 - h);
+        smoothDistance = lerp(smoothDistance, dp, h) - correction;
+        correction /= 1.0 + 3.0 * smoothness;
+        float3 cellColor = BLHash_int2_to_float3(cellPosition + cellOffset);
+        smoothColor = lerp(smoothColor, cellColor, h) - correction;
+        smoothPosition = lerp(smoothPosition, pointPosition, h) - correction;
+    }}
+
+    outDistance = smoothDistance;
+    outColor = smoothColor;
+    float2 v = cellPositionF + smoothPosition;
+    outPosition = float4(v.x, v.y, 0.0, 0.0);
+}
+
+Function BLVor_f2_2(in float2 coord, in float randomness, in float metric, in float exponent,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float2 cellPositionF = floor(coord);
+    float2 localPosition = coord - cellPositionF;
+    int2 cellPosition = int2(cellPositionF);
+
+    float distanceF1 = 3.402823466e+38;
+    float distanceF2 = 3.402823466e+38;
+    int2 offsetF1 = int2(0, 0);
+    int2 offsetF2 = int2(0, 0);
+    float2 positionF1 = float2(0.0, 0.0);
+    float2 positionF2 = float2(0.0, 0.0);
+
+    for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+        int2 cellOffset = int2(i, j);
+        float2 hp = BLHash_int2_to_float2(cellPosition + cellOffset);
+        float2 pointPosition = float2(cellOffset) + hp * randomness;
+        // The full metric distance, not the bound — unlike f1. Upstream's choice.
+        float dp = BLVor_distance_2(pointPosition, localPosition, metric, exponent);
+        if (dp < distanceF1) {
+            distanceF2 = distanceF1;
+            distanceF1 = dp;
+            offsetF2 = offsetF1;
+            offsetF1 = cellOffset;
+            positionF2 = positionF1;
+            positionF1 = pointPosition;
+        }
+        else if (dp < distanceF2) {
+            distanceF2 = dp;
+            offsetF2 = cellOffset;
+            positionF2 = pointPosition;
+        }
+    }}
+
+    outDistance = distanceF2;
+    outColor = BLHash_int2_to_float3(cellPosition + offsetF2);
+    float2 v = positionF2 + cellPositionF;
+    outPosition = float4(v.x, v.y, 0.0, 0.0);
+}
+
+// Distance to Edge ignores the metric entirely — it is squared-Euclidean nearest-point followed by
+// a plane distance to each bisector.
+Function BLVor_dist_to_edge_2(in float2 coord, in float randomness, out float result)
+{
+    float2 cellPositionF = floor(coord);
+    float2 localPosition = coord - cellPositionF;
+    int2 cellPosition = int2(cellPositionF);
+
+    float2 vectorToClosest = float2(0.0, 0.0);
+    float minDistance = 3.402823466e+38;
+
+    for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+        int2 cellOffset = int2(i, j);
+        float2 hp = BLHash_int2_to_float2(cellPosition + cellOffset);
+        float2 vectorToPoint = float2(cellOffset) + hp * randomness - localPosition;
+        float dp = dot(vectorToPoint, vectorToPoint);
+        if (dp < minDistance) {
+            minDistance = dp;
+            vectorToClosest = vectorToPoint;
+        }
+    }}
+
+    minDistance = 3.402823466e+38;
+
+    for (int jb = -1; jb <= 1; jb++) {
+    for (int ib = -1; ib <= 1; ib++) {
+        int2 cellOffset = int2(ib, jb);
+        float2 hp2 = BLHash_int2_to_float2(cellPosition + cellOffset);
+        float2 vectorToPoint2 = float2(cellOffset) + hp2 * randomness - localPosition;
+        float2 perp = vectorToPoint2 - vectorToClosest;
+        if (dot(perp, perp) > 0.0001) {
+            float dEdge = dot((vectorToClosest + vectorToPoint2) / 2.0, normalize(perp));
+            minDistance = min(minDistance, dEdge);
+        }
+    }}
+
+    result = minDistance;
+}
+
+// N-Sphere Radius is not fractalised and ignores the metric: half the distance from the closest
+// point to *its* closest neighbour.
+Function BLVor_n_sphere_radius_2(in float2 coord, in float randomness, out float result)
+{
+    float2 cellPositionF = floor(coord);
+    float2 localPosition = coord - cellPositionF;
+    int2 cellPosition = int2(cellPositionF);
+
+    float2 closestPoint = float2(0.0, 0.0);
+    int2 closestPointOffset = int2(0, 0);
+    float minDistanceSq = 3.402823466e+38;
+
+    for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+        int2 cellOffset = int2(i, j);
+        float2 hp = BLHash_int2_to_float2(cellPosition + cellOffset);
+        float2 pointPosition = float2(cellOffset) + hp * randomness;
+        float2 e = pointPosition - localPosition;
+        float dsq = dot(e, e);
+        if (dsq < minDistanceSq) {
+            minDistanceSq = dsq;
+            closestPoint = pointPosition;
+            closestPointOffset = cellOffset;
+        }
+    }}
+
+    minDistanceSq = 3.402823466e+38;
+    float2 closestToClosest = float2(0.0, 0.0);
+
+    for (int jb = -1; jb <= 1; jb++) {
+    for (int ib = -1; ib <= 1; ib++) {
+        int2 cellOffset = int2(ib, jb);
+        if (!(ib == 0 && jb == 0)) {
+            int2 cellOffset2 = cellOffset + closestPointOffset;
+            float2 hp2 = BLHash_int2_to_float2(cellPosition + cellOffset2);
+            float2 pointPosition2 = float2(cellOffset2) + hp2 * randomness;
+            float2 e2 = closestPoint - pointPosition2;
+            float dsq2 = dot(e2, e2);
+            if (dsq2 < minDistanceSq) {
+                minDistanceSq = dsq2;
+                closestToClosest = pointPosition2;
+            }
+        }
+    }}
+
+    result = length(closestToClosest - closestPoint) / 2.0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// 3D
+// ---------------------------------------------------------------------------------------------
+
+// Metric-aware distance. Minkowski with exponent 1 is Manhattan and with 2 is Euclidean, but the
+// dedicated branches are kept because upstream keeps them — pow() is not bit-identical to the
+// closed forms.
+Function BLVor_distance_3(in float3 a, in float3 b, in float metric, in float exponent,
+                        out float result)
+{
+    float3 dv = abs(a - b);
+    if (metric < 0.5) {
+        result = length(a - b);
+    }
+    else if (metric < 1.5) {
+        result = dv.x + dv.y + dv.z;
+    }
+    else if (metric < 2.5) {
+        result = max(max(dv.x, dv.y), dv.z);
+    }
+    else {
+        float3 pw = pow(dv, exponent);
+        result = pow(pw.x + pw.y + pw.z, 1.0 / exponent);
+    }
+}
+
+// A monotone stand-in used only to pick the nearest cell, never to report a distance: Euclidean
+// skips the sqrt. Upstream uses it in f1 and n-sphere but *not* in f2, which is an inconsistency
+// worth preserving rather than tidying.
+Function BLVor_distance_bound_3(in float3 a, in float3 b, in float metric, in float exponent,
+                        out float result)
+{
+    float3 dv = abs(a - b);
+    if (metric < 0.5) {
+        float3 e = a - b;
+        result = dot(e, e);
+    }
+    else if (metric < 1.5) {
+        result = dv.x + dv.y + dv.z;
+    }
+    else if (metric < 2.5) {
+        result = max(max(dv.x, dv.y), dv.z);
+    }
+    else {
+        float3 pw = pow(dv, exponent);
+        result = pw.x + pw.y + pw.z;
+    }
+}
+
+Function BLVor_f1_3(in float3 coord, in float randomness, in float metric, in float exponent,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float3 cellPositionF = floor(coord);
+    float3 localPosition = coord - cellPositionF;
+    int3 cellPosition = int3(cellPositionF);
+
+    float minDistance = 3.402823466e+38;
+    int3 targetOffset = int3(0, 0, 0);
+    float3 targetPosition = float3(0.0, 0.0, 0.0);
+
+    for (int k = -1; k <= 1; k++) {
+    for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+        int3 cellOffset = int3(i, j, k);
+        float3 hp = BLHash_int3_to_float3(cellPosition + cellOffset);
+        float3 pointPosition = float3(cellOffset) + hp * randomness;
+        float dp = BLVor_distance_bound_3(pointPosition, localPosition, metric, exponent);
+        if (dp < minDistance) {
+            targetOffset = cellOffset;
+            minDistance = dp;
+            targetPosition = pointPosition;
+        }
+    }}}
+
+    outDistance = BLVor_distance_3(targetPosition, localPosition, metric, exponent);
+    outColor = BLHash_int3_to_float3(cellPosition + targetOffset);
+    float3 v = targetPosition + cellPositionF;
+    outPosition = float4(v.x, v.y, v.z, 0.0);
+}
+
+// Note the window: -2..2, not -1..1. In 3D that is 125 cells per octave against 27
+// for F1, which is most of why Smooth F1 is the expensive feature.
+Function BLVor_smooth_f1_3(in float3 coord, in float randomness, in float metric,
+                        in float exponent, in float smoothness,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float3 cellPositionF = floor(coord);
+    float3 localPosition = coord - cellPositionF;
+    int3 cellPosition = int3(cellPositionF);
+
+    float smoothDistance = 0.0;
+    float3 smoothColor = float3(0.0, 0.0, 0.0);
+    float3 smoothPosition = float3(0.0, 0.0, 0.0);
+    float h = -1.0;
+
+    [loop] for (int k = -2; k <= 2; k++) {
+    [loop] for (int j = -2; j <= 2; j++) {
+    [loop] for (int i = -2; i <= 2; i++) {
+        int3 cellOffset = int3(i, j, k);
+        float3 hp = BLHash_int3_to_float3(cellPosition + cellOffset);
+        float3 pointPosition = float3(cellOffset) + hp * randomness;
+        float dp = BLVor_distance_3(pointPosition, localPosition, metric, exponent);
+        h = (h == -1.0) ? 1.0
+                        : smoothstep(0.0, 1.0, 0.5 + 0.5 * (smoothDistance - dp) / smoothness);
+        float correction = smoothness * h * (1.0 - h);
+        smoothDistance = lerp(smoothDistance, dp, h) - correction;
+        correction /= 1.0 + 3.0 * smoothness;
+        float3 cellColor = BLHash_int3_to_float3(cellPosition + cellOffset);
+        smoothColor = lerp(smoothColor, cellColor, h) - correction;
+        smoothPosition = lerp(smoothPosition, pointPosition, h) - correction;
+    }}}
+
+    outDistance = smoothDistance;
+    outColor = smoothColor;
+    float3 v = cellPositionF + smoothPosition;
+    outPosition = float4(v.x, v.y, v.z, 0.0);
+}
+
+Function BLVor_f2_3(in float3 coord, in float randomness, in float metric, in float exponent,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float3 cellPositionF = floor(coord);
+    float3 localPosition = coord - cellPositionF;
+    int3 cellPosition = int3(cellPositionF);
+
+    float distanceF1 = 3.402823466e+38;
+    float distanceF2 = 3.402823466e+38;
+    int3 offsetF1 = int3(0, 0, 0);
+    int3 offsetF2 = int3(0, 0, 0);
+    float3 positionF1 = float3(0.0, 0.0, 0.0);
+    float3 positionF2 = float3(0.0, 0.0, 0.0);
+
+    for (int k = -1; k <= 1; k++) {
+    for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+        int3 cellOffset = int3(i, j, k);
+        float3 hp = BLHash_int3_to_float3(cellPosition + cellOffset);
+        float3 pointPosition = float3(cellOffset) + hp * randomness;
+        // The full metric distance, not the bound — unlike f1. Upstream's choice.
+        float dp = BLVor_distance_3(pointPosition, localPosition, metric, exponent);
+        if (dp < distanceF1) {
+            distanceF2 = distanceF1;
+            distanceF1 = dp;
+            offsetF2 = offsetF1;
+            offsetF1 = cellOffset;
+            positionF2 = positionF1;
+            positionF1 = pointPosition;
+        }
+        else if (dp < distanceF2) {
+            distanceF2 = dp;
+            offsetF2 = cellOffset;
+            positionF2 = pointPosition;
+        }
+    }}}
+
+    outDistance = distanceF2;
+    outColor = BLHash_int3_to_float3(cellPosition + offsetF2);
+    float3 v = positionF2 + cellPositionF;
+    outPosition = float4(v.x, v.y, v.z, 0.0);
+}
+
+// Distance to Edge ignores the metric entirely — it is squared-Euclidean nearest-point followed by
+// a plane distance to each bisector.
+Function BLVor_dist_to_edge_3(in float3 coord, in float randomness, out float result)
+{
+    float3 cellPositionF = floor(coord);
+    float3 localPosition = coord - cellPositionF;
+    int3 cellPosition = int3(cellPositionF);
+
+    float3 vectorToClosest = float3(0.0, 0.0, 0.0);
+    float minDistance = 3.402823466e+38;
+
+    for (int k = -1; k <= 1; k++) {
+    for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+        int3 cellOffset = int3(i, j, k);
+        float3 hp = BLHash_int3_to_float3(cellPosition + cellOffset);
+        float3 vectorToPoint = float3(cellOffset) + hp * randomness - localPosition;
+        float dp = dot(vectorToPoint, vectorToPoint);
+        if (dp < minDistance) {
+            minDistance = dp;
+            vectorToClosest = vectorToPoint;
+        }
+    }}}
+
+    minDistance = 3.402823466e+38;
+
+    for (int kb = -1; kb <= 1; kb++) {
+    for (int jb = -1; jb <= 1; jb++) {
+    for (int ib = -1; ib <= 1; ib++) {
+        int3 cellOffset = int3(ib, jb, kb);
+        float3 hp2 = BLHash_int3_to_float3(cellPosition + cellOffset);
+        float3 vectorToPoint2 = float3(cellOffset) + hp2 * randomness - localPosition;
+        float3 perp = vectorToPoint2 - vectorToClosest;
+        if (dot(perp, perp) > 0.0001) {
+            float dEdge = dot((vectorToClosest + vectorToPoint2) / 2.0, normalize(perp));
+            minDistance = min(minDistance, dEdge);
+        }
+    }}}
+
+    result = minDistance;
+}
+
+// N-Sphere Radius is not fractalised and ignores the metric: half the distance from the closest
+// point to *its* closest neighbour.
+Function BLVor_n_sphere_radius_3(in float3 coord, in float randomness, out float result)
+{
+    float3 cellPositionF = floor(coord);
+    float3 localPosition = coord - cellPositionF;
+    int3 cellPosition = int3(cellPositionF);
+
+    float3 closestPoint = float3(0.0, 0.0, 0.0);
+    int3 closestPointOffset = int3(0, 0, 0);
+    float minDistanceSq = 3.402823466e+38;
+
+    for (int k = -1; k <= 1; k++) {
+    for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+        int3 cellOffset = int3(i, j, k);
+        float3 hp = BLHash_int3_to_float3(cellPosition + cellOffset);
+        float3 pointPosition = float3(cellOffset) + hp * randomness;
+        float3 e = pointPosition - localPosition;
+        float dsq = dot(e, e);
+        if (dsq < minDistanceSq) {
+            minDistanceSq = dsq;
+            closestPoint = pointPosition;
+            closestPointOffset = cellOffset;
+        }
+    }}}
+
+    minDistanceSq = 3.402823466e+38;
+    float3 closestToClosest = float3(0.0, 0.0, 0.0);
+
+    for (int kb = -1; kb <= 1; kb++) {
+    for (int jb = -1; jb <= 1; jb++) {
+    for (int ib = -1; ib <= 1; ib++) {
+        int3 cellOffset = int3(ib, jb, kb);
+        if (!(ib == 0 && jb == 0 && kb == 0)) {
+            int3 cellOffset2 = cellOffset + closestPointOffset;
+            float3 hp2 = BLHash_int3_to_float3(cellPosition + cellOffset2);
+            float3 pointPosition2 = float3(cellOffset2) + hp2 * randomness;
+            float3 e2 = closestPoint - pointPosition2;
+            float dsq2 = dot(e2, e2);
+            if (dsq2 < minDistanceSq) {
+                minDistanceSq = dsq2;
+                closestToClosest = pointPosition2;
+            }
+        }
+    }}}
+
+    result = length(closestToClosest - closestPoint) / 2.0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// 4D
+// ---------------------------------------------------------------------------------------------
+
+// Metric-aware distance. Minkowski with exponent 1 is Manhattan and with 2 is Euclidean, but the
+// dedicated branches are kept because upstream keeps them — pow() is not bit-identical to the
+// closed forms.
+Function BLVor_distance_4(in float4 a, in float4 b, in float metric, in float exponent,
+                        out float result)
+{
+    float4 dv = abs(a - b);
+    if (metric < 0.5) {
+        result = length(a - b);
+    }
+    else if (metric < 1.5) {
+        result = dv.x + dv.y + dv.z + dv.w;
+    }
+    else if (metric < 2.5) {
+        result = max(max(dv.x, dv.y), max(dv.z, dv.w));
+    }
+    else {
+        float4 pw = pow(dv, exponent);
+        result = pow(pw.x + pw.y + pw.z + pw.w, 1.0 / exponent);
+    }
+}
+
+// A monotone stand-in used only to pick the nearest cell, never to report a distance: Euclidean
+// skips the sqrt. Upstream uses it in f1 and n-sphere but *not* in f2, which is an inconsistency
+// worth preserving rather than tidying.
+Function BLVor_distance_bound_4(in float4 a, in float4 b, in float metric, in float exponent,
+                        out float result)
+{
+    float4 dv = abs(a - b);
+    if (metric < 0.5) {
+        float4 e = a - b;
+        result = dot(e, e);
+    }
+    else if (metric < 1.5) {
+        result = dv.x + dv.y + dv.z + dv.w;
+    }
+    else if (metric < 2.5) {
+        result = max(max(dv.x, dv.y), max(dv.z, dv.w));
+    }
+    else {
+        float4 pw = pow(dv, exponent);
+        result = pw.x + pw.y + pw.z + pw.w;
+    }
+}
+
+Function BLVor_f1_4(in float4 coord, in float randomness, in float metric, in float exponent,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float4 cellPositionF = floor(coord);
+    float4 localPosition = coord - cellPositionF;
+    int4 cellPosition = int4(cellPositionF);
+
+    float minDistance = 3.402823466e+38;
+    int4 targetOffset = int4(0, 0, 0, 0);
+    float4 targetPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    [loop] for (int u = -1; u <= 1; u++) {
+    [loop] for (int k = -1; k <= 1; k++) {
+    [loop] for (int j = -1; j <= 1; j++) {
+    [loop] for (int i = -1; i <= 1; i++) {
+        int4 cellOffset = int4(i, j, k, u);
+        float4 hp = BLHash_int4_to_float4(cellPosition + cellOffset);
+        float4 pointPosition = float4(cellOffset) + hp * randomness;
+        float dp = BLVor_distance_bound_4(pointPosition, localPosition, metric, exponent);
+        if (dp < minDistance) {
+            targetOffset = cellOffset;
+            minDistance = dp;
+            targetPosition = pointPosition;
+        }
+    }}}}
+
+    outDistance = BLVor_distance_4(targetPosition, localPosition, metric, exponent);
+    outColor = BLHash_int4_to_float3(cellPosition + targetOffset);
+    float4 v = targetPosition + cellPositionF;
+    outPosition = v;
+}
+
+// Note the window: -2..2, not -1..1. In 4D that is 625 cells per octave against 81
+// for F1, which is most of why Smooth F1 is the expensive feature.
+Function BLVor_smooth_f1_4(in float4 coord, in float randomness, in float metric,
+                        in float exponent, in float smoothness,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float4 cellPositionF = floor(coord);
+    float4 localPosition = coord - cellPositionF;
+    int4 cellPosition = int4(cellPositionF);
+
+    float smoothDistance = 0.0;
+    float3 smoothColor = float3(0.0, 0.0, 0.0);
+    float4 smoothPosition = float4(0.0, 0.0, 0.0, 0.0);
+    float h = -1.0;
+
+    [loop] for (int u = -2; u <= 2; u++) {
+    [loop] for (int k = -2; k <= 2; k++) {
+    [loop] for (int j = -2; j <= 2; j++) {
+    [loop] for (int i = -2; i <= 2; i++) {
+        int4 cellOffset = int4(i, j, k, u);
+        float4 hp = BLHash_int4_to_float4(cellPosition + cellOffset);
+        float4 pointPosition = float4(cellOffset) + hp * randomness;
+        float dp = BLVor_distance_4(pointPosition, localPosition, metric, exponent);
+        h = (h == -1.0) ? 1.0
+                        : smoothstep(0.0, 1.0, 0.5 + 0.5 * (smoothDistance - dp) / smoothness);
+        float correction = smoothness * h * (1.0 - h);
+        smoothDistance = lerp(smoothDistance, dp, h) - correction;
+        correction /= 1.0 + 3.0 * smoothness;
+        float3 cellColor = BLHash_int4_to_float3(cellPosition + cellOffset);
+        smoothColor = lerp(smoothColor, cellColor, h) - correction;
+        smoothPosition = lerp(smoothPosition, pointPosition, h) - correction;
+    }}}}
+
+    outDistance = smoothDistance;
+    outColor = smoothColor;
+    float4 v = cellPositionF + smoothPosition;
+    outPosition = v;
+}
+
+Function BLVor_f2_4(in float4 coord, in float randomness, in float metric, in float exponent,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float4 cellPositionF = floor(coord);
+    float4 localPosition = coord - cellPositionF;
+    int4 cellPosition = int4(cellPositionF);
+
+    float distanceF1 = 3.402823466e+38;
+    float distanceF2 = 3.402823466e+38;
+    int4 offsetF1 = int4(0, 0, 0, 0);
+    int4 offsetF2 = int4(0, 0, 0, 0);
+    float4 positionF1 = float4(0.0, 0.0, 0.0, 0.0);
+    float4 positionF2 = float4(0.0, 0.0, 0.0, 0.0);
+
+    [loop] for (int u = -1; u <= 1; u++) {
+    [loop] for (int k = -1; k <= 1; k++) {
+    [loop] for (int j = -1; j <= 1; j++) {
+    [loop] for (int i = -1; i <= 1; i++) {
+        int4 cellOffset = int4(i, j, k, u);
+        float4 hp = BLHash_int4_to_float4(cellPosition + cellOffset);
+        float4 pointPosition = float4(cellOffset) + hp * randomness;
+        // The full metric distance, not the bound — unlike f1. Upstream's choice.
+        float dp = BLVor_distance_4(pointPosition, localPosition, metric, exponent);
+        if (dp < distanceF1) {
+            distanceF2 = distanceF1;
+            distanceF1 = dp;
+            offsetF2 = offsetF1;
+            offsetF1 = cellOffset;
+            positionF2 = positionF1;
+            positionF1 = pointPosition;
+        }
+        else if (dp < distanceF2) {
+            distanceF2 = dp;
+            offsetF2 = cellOffset;
+            positionF2 = pointPosition;
+        }
+    }}}}
+
+    outDistance = distanceF2;
+    outColor = BLHash_int4_to_float3(cellPosition + offsetF2);
+    float4 v = positionF2 + cellPositionF;
+    outPosition = v;
+}
+
+// Distance to Edge ignores the metric entirely — it is squared-Euclidean nearest-point followed by
+// a plane distance to each bisector.
+Function BLVor_dist_to_edge_4(in float4 coord, in float randomness, out float result)
+{
+    float4 cellPositionF = floor(coord);
+    float4 localPosition = coord - cellPositionF;
+    int4 cellPosition = int4(cellPositionF);
+
+    float4 vectorToClosest = float4(0.0, 0.0, 0.0, 0.0);
+    float minDistance = 3.402823466e+38;
+
+    [loop] for (int u = -1; u <= 1; u++) {
+    [loop] for (int k = -1; k <= 1; k++) {
+    [loop] for (int j = -1; j <= 1; j++) {
+    [loop] for (int i = -1; i <= 1; i++) {
+        int4 cellOffset = int4(i, j, k, u);
+        float4 hp = BLHash_int4_to_float4(cellPosition + cellOffset);
+        float4 vectorToPoint = float4(cellOffset) + hp * randomness - localPosition;
+        float dp = dot(vectorToPoint, vectorToPoint);
+        if (dp < minDistance) {
+            minDistance = dp;
+            vectorToClosest = vectorToPoint;
+        }
+    }}}}
+
+    minDistance = 3.402823466e+38;
+
+    [loop] for (int ub = -1; ub <= 1; ub++) {
+    [loop] for (int kb = -1; kb <= 1; kb++) {
+    [loop] for (int jb = -1; jb <= 1; jb++) {
+    [loop] for (int ib = -1; ib <= 1; ib++) {
+        int4 cellOffset = int4(ib, jb, kb, ub);
+        float4 hp2 = BLHash_int4_to_float4(cellPosition + cellOffset);
+        float4 vectorToPoint2 = float4(cellOffset) + hp2 * randomness - localPosition;
+        float4 perp = vectorToPoint2 - vectorToClosest;
+        if (dot(perp, perp) > 0.0001) {
+            float dEdge = dot((vectorToClosest + vectorToPoint2) / 2.0, normalize(perp));
+            minDistance = min(minDistance, dEdge);
+        }
+    }}}}
+
+    result = minDistance;
+}
+
+// N-Sphere Radius is not fractalised and ignores the metric: half the distance from the closest
+// point to *its* closest neighbour.
+Function BLVor_n_sphere_radius_4(in float4 coord, in float randomness, out float result)
+{
+    float4 cellPositionF = floor(coord);
+    float4 localPosition = coord - cellPositionF;
+    int4 cellPosition = int4(cellPositionF);
+
+    float4 closestPoint = float4(0.0, 0.0, 0.0, 0.0);
+    int4 closestPointOffset = int4(0, 0, 0, 0);
+    float minDistanceSq = 3.402823466e+38;
+
+    [loop] for (int u = -1; u <= 1; u++) {
+    [loop] for (int k = -1; k <= 1; k++) {
+    [loop] for (int j = -1; j <= 1; j++) {
+    [loop] for (int i = -1; i <= 1; i++) {
+        int4 cellOffset = int4(i, j, k, u);
+        float4 hp = BLHash_int4_to_float4(cellPosition + cellOffset);
+        float4 pointPosition = float4(cellOffset) + hp * randomness;
+        float4 e = pointPosition - localPosition;
+        float dsq = dot(e, e);
+        if (dsq < minDistanceSq) {
+            minDistanceSq = dsq;
+            closestPoint = pointPosition;
+            closestPointOffset = cellOffset;
+        }
+    }}}}
+
+    minDistanceSq = 3.402823466e+38;
+    float4 closestToClosest = float4(0.0, 0.0, 0.0, 0.0);
+
+    [loop] for (int ub = -1; ub <= 1; ub++) {
+    [loop] for (int kb = -1; kb <= 1; kb++) {
+    [loop] for (int jb = -1; jb <= 1; jb++) {
+    [loop] for (int ib = -1; ib <= 1; ib++) {
+        int4 cellOffset = int4(ib, jb, kb, ub);
+        if (!(ib == 0 && jb == 0 && kb == 0 && ub == 0)) {
+            int4 cellOffset2 = cellOffset + closestPointOffset;
+            float4 hp2 = BLHash_int4_to_float4(cellPosition + cellOffset2);
+            float4 pointPosition2 = float4(cellOffset2) + hp2 * randomness;
+            float4 e2 = closestPoint - pointPosition2;
+            float dsq2 = dot(e2, e2);
+            if (dsq2 < minDistanceSq) {
+                minDistanceSq = dsq2;
+                closestToClosest = pointPosition2;
+            }
+        }
+    }}}}
+
+    result = length(closestToClosest - closestPoint) / 2.0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fractal wrappers, one per dimension and feature
+//
+// Upstream picks the feature inside the octave loop from a runtime enum. Split here
+// instead: a dynamic feature would drag Smooth F1's 5^N window into every material
+// that uses any feature, and the feature is an author-time dropdown anyway.
+// ---------------------------------------------------------------------------------------------
+
+Function BLVor_fractal_f1_1(in float coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_f1_1(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_smoothf1_1(in float coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_smooth_f1_1(coord * octaveScale, randomness, metric, exponent, smoothness, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_f2_1(in float coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_f2_1(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_d2e_1(in float coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float maxDistance,
+                        in float normalize01, out float result)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = maxDistance;
+    float octaveScale = 1.0;
+    float dist = 8.0;
+
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float octaveDistance = BLVor_dist_to_edge_1(coord * octaveScale, randomness);
+
+        if (zeroInput) {
+            dist = octaveDistance;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude = lerp(maxAmplitude, maxDistance / octaveScale, amplitude);
+            dist = lerp(dist, min(dist, octaveDistance / octaveScale), amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                float lerpAmplitude = lerp(maxAmplitude, maxDistance / octaveScale, amplitude);
+                maxAmplitude = lerp(maxAmplitude, lerpAmplitude, remainder);
+                float lerpDistance = lerp(dist, min(dist, octaveDistance / octaveScale), amplitude);
+                dist = lerp(dist, min(dist, lerpDistance), remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        dist /= maxAmplitude;
+    }
+
+    result = dist;
+}
+
+Function BLVor_fractal_f1_2(in float2 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_f1_2(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_smoothf1_2(in float2 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_smooth_f1_2(coord * octaveScale, randomness, metric, exponent, smoothness, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_f2_2(in float2 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_f2_2(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_d2e_2(in float2 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float maxDistance,
+                        in float normalize01, out float result)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = maxDistance;
+    float octaveScale = 1.0;
+    float dist = 8.0;
+
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float octaveDistance = BLVor_dist_to_edge_2(coord * octaveScale, randomness);
+
+        if (zeroInput) {
+            dist = octaveDistance;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude = lerp(maxAmplitude, maxDistance / octaveScale, amplitude);
+            dist = lerp(dist, min(dist, octaveDistance / octaveScale), amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                float lerpAmplitude = lerp(maxAmplitude, maxDistance / octaveScale, amplitude);
+                maxAmplitude = lerp(maxAmplitude, lerpAmplitude, remainder);
+                float lerpDistance = lerp(dist, min(dist, octaveDistance / octaveScale), amplitude);
+                dist = lerp(dist, min(dist, lerpDistance), remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        dist /= maxAmplitude;
+    }
+
+    result = dist;
+}
+
+Function BLVor_fractal_f1_3(in float3 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_f1_3(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_smoothf1_3(in float3 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_smooth_f1_3(coord * octaveScale, randomness, metric, exponent, smoothness, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_f2_3(in float3 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_f2_3(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_d2e_3(in float3 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float maxDistance,
+                        in float normalize01, out float result)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = maxDistance;
+    float octaveScale = 1.0;
+    float dist = 8.0;
+
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float octaveDistance = BLVor_dist_to_edge_3(coord * octaveScale, randomness);
+
+        if (zeroInput) {
+            dist = octaveDistance;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude = lerp(maxAmplitude, maxDistance / octaveScale, amplitude);
+            dist = lerp(dist, min(dist, octaveDistance / octaveScale), amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                float lerpAmplitude = lerp(maxAmplitude, maxDistance / octaveScale, amplitude);
+                maxAmplitude = lerp(maxAmplitude, lerpAmplitude, remainder);
+                float lerpDistance = lerp(dist, min(dist, octaveDistance / octaveScale), amplitude);
+                dist = lerp(dist, min(dist, lerpDistance), remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        dist /= maxAmplitude;
+    }
+
+    result = dist;
+}
+
+Function BLVor_fractal_f1_4(in float4 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_f1_4(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_smoothf1_4(in float4 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_smooth_f1_4(coord * octaveScale, randomness, metric, exponent, smoothness, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_f2_4(in float4 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float metric,
+                        in float exponent, in float smoothness, in float maxDistance,
+                        in float normalize01, in float scaleIn,
+                        out float outDistance, out float3 outColor, out float4 outPosition)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = 0.0;
+    float octaveScale = 1.0;
+
+    float accDistance = 0.0;
+    float3 accColor = float3(0.0, 0.0, 0.0);
+    float4 accPosition = float4(0.0, 0.0, 0.0, 0.0);
+
+    // Upstream short-circuits both "no octaves" and "no falloff" to a single unweighted octave.
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float oDist;
+        float3 oColor;
+        float4 oPosition;
+        BLVor_f2_4(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+
+        if (zeroInput) {
+            maxAmplitude = 1.0;
+            accDistance = oDist;
+            accColor = oColor;
+            accPosition = oPosition;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude += amplitude;
+            accDistance += oDist * amplitude;
+            accColor += oColor * amplitude;
+            // Position is lerped, not accumulated — the fractal is a blend of cell positions,
+            // and `amplitude` is used as the lerp factor rather than a weight.
+            accPosition = lerp(accPosition, oPosition / octaveScale, amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                maxAmplitude = lerp(maxAmplitude, maxAmplitude + amplitude, remainder);
+                accDistance = lerp(accDistance, accDistance + oDist * amplitude, remainder);
+                accColor = lerp(accColor, accColor + oColor * amplitude, remainder);
+                float4 lerped = lerp(accPosition, oPosition / octaveScale, amplitude);
+                accPosition = lerp(accPosition, lerped, remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        accDistance /= maxAmplitude * maxDistance;
+        accColor /= maxAmplitude;
+    }
+
+    // safe_divide: a zero scale yields zero, not Inf.
+    accPosition = (scaleIn != 0.0) ? (accPosition / scaleIn) : float4(0.0, 0.0, 0.0, 0.0);
+
+    outDistance = accDistance;
+    outColor = accColor;
+    outPosition = accPosition;
+}
+
+Function BLVor_fractal_d2e_4(in float4 coord, in float detail, in float roughness,
+                        in float lacunarity, in float randomness, in float maxDistance,
+                        in float normalize01, out float result)
+{
+    float amplitude = 1.0;
+    float maxAmplitude = maxDistance;
+    float octaveScale = 1.0;
+    float dist = 8.0;
+
+    bool zeroInput = (detail == 0.0) || (roughness == 0.0);
+
+    int octaves = int(ceil(detail));
+    for (int i = 0; i <= octaves; i++) {
+        float octaveDistance = BLVor_dist_to_edge_4(coord * octaveScale, randomness);
+
+        if (zeroInput) {
+            dist = octaveDistance;
+            break;
+        }
+
+        if (float(i) <= detail) {
+            maxAmplitude = lerp(maxAmplitude, maxDistance / octaveScale, amplitude);
+            dist = lerp(dist, min(dist, octaveDistance / octaveScale), amplitude);
+            octaveScale *= lacunarity;
+            amplitude *= roughness;
+        }
+        else {
+            float remainder = detail - floor(detail);
+            if (remainder != 0.0) {
+                float lerpAmplitude = lerp(maxAmplitude, maxDistance / octaveScale, amplitude);
+                maxAmplitude = lerp(maxAmplitude, lerpAmplitude, remainder);
+                float lerpDistance = lerp(dist, min(dist, octaveDistance / octaveScale), amplitude);
+                dist = lerp(dist, min(dist, lerpDistance), remainder);
+            }
+        }
+    }
+
+    if (normalize01 != 0.0) {
+        dist /= maxAmplitude;
+    }
+
+    result = dist;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Public API — the Voronoi Texture node
+//
+// One entry point per Feature per dimension. Outputs follow the node's own order:
+// Distance, Color, Position, W — minus the ones that feature does not produce.
+//
+// `metric`: 0 Euclidean | 1 Manhattan | 2 Chebychev | 3 Minkowski. Ignored by
+// Distance To Edge, N-Sphere Radius and every 1D entry, as in Blender.
+// ---------------------------------------------------------------------------------------------
+
+Namespace(Name = "BL")
+{
+
+    Function TexVoronoiF1_1D(in float w, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float p = w * scale;
+        float md = 0.5 + 0.5 * rnd;
+        float maxDistance = md;
+        float dist;
+        float3 col;
+        float4 pos;
+        BLVor_fractal_f1_1(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, dist, col, pos);
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiSmoothF1_1D(in float w, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float smoothness, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float p = w * scale;
+        float md = 0.5 + 0.5 * rnd;
+        float maxDistance = md;
+        float sm = clamp(smoothness / 2.0, 0.0, 0.5);
+        float dist;
+        float3 col;
+        float4 pos;
+        if (sm != 0.0) {
+            BLVor_fractal_smoothf1_1(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
+                                     maxDistance, normalize01, scale, dist, col, pos);
+        }
+        else {
+            BLVor_fractal_f1_1(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                     maxDistance, normalize01, scale, dist, col, pos);
+        }
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiF2_1D(in float w, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float p = w * scale;
+        float md = 0.5 + 0.5 * rnd;
+        float maxDistance = md * 2.0;
+        float dist;
+        float3 col;
+        float4 pos;
+        BLVor_fractal_f2_1(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, dist, col, pos);
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiDistToEdge_1D(in float w, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float normalize01, out float outDistance)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float p = w * scale;
+        float maxDistance = 0.5 + 0.5 * rnd;
+
+        outDistance = BLVor_fractal_d2e_1(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
+    }
+
+    // Not fractalised upstream, so there is no detail / roughness / lacunarity here.
+    Function TexVoronoiRadius_1D(in float w, in float scale, in float randomness,
+                        out float outRadius)
+    {
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float p = w * scale;
+        outRadius = BLVor_n_sphere_radius_1(p, rnd);
+    }
+
+    Function TexVoronoiF1_2D(in float2 co, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float2 p = co * scale;
+        float md = 0.5 + 0.5 * rnd;
+        float diag = BLVor_distance_2(float2(0.0, 0.0), float2(md, md), metric, exponent);
+        float maxDistance = diag;
+        float dist;
+        float3 col;
+        float4 pos;
+        BLVor_fractal_f1_2(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, dist, col, pos);
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiSmoothF1_2D(in float2 co, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float smoothness, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float2 p = co * scale;
+        float md = 0.5 + 0.5 * rnd;
+        float diag = BLVor_distance_2(float2(0.0, 0.0), float2(md, md), metric, exponent);
+        float maxDistance = diag;
+        float sm = clamp(smoothness / 2.0, 0.0, 0.5);
+        float dist;
+        float3 col;
+        float4 pos;
+        if (sm != 0.0) {
+            BLVor_fractal_smoothf1_2(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
+                                     maxDistance, normalize01, scale, dist, col, pos);
+        }
+        else {
+            BLVor_fractal_f1_2(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                     maxDistance, normalize01, scale, dist, col, pos);
+        }
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiF2_2D(in float2 co, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float2 p = co * scale;
+        float md = 0.5 + 0.5 * rnd;
+        float diag = BLVor_distance_2(float2(0.0, 0.0), float2(md, md), metric, exponent);
+        float maxDistance = diag * 2.0;
+        float dist;
+        float3 col;
+        float4 pos;
+        BLVor_fractal_f2_2(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, dist, col, pos);
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiDistToEdge_2D(in float2 co, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float normalize01, out float outDistance)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float2 p = co * scale;
+        float maxDistance = 0.5 + 0.5 * rnd;
+
+        outDistance = BLVor_fractal_d2e_2(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
+    }
+
+    // Not fractalised upstream, so there is no detail / roughness / lacunarity here.
+    Function TexVoronoiRadius_2D(in float2 co, in float scale, in float randomness,
+                        out float outRadius)
+    {
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float2 p = co * scale;
+        outRadius = BLVor_n_sphere_radius_2(p, rnd);
+    }
+
+    Function TexVoronoiF1_3D(in float3 co, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float3 p = co * scale;
+        float md = 0.5 + 0.5 * rnd;
+        float diag = BLVor_distance_3(float3(0.0, 0.0, 0.0), float3(md, md, md), metric, exponent);
+        float maxDistance = diag;
+        float dist;
+        float3 col;
+        float4 pos;
+        BLVor_fractal_f1_3(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, dist, col, pos);
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiSmoothF1_3D(in float3 co, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float smoothness, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float3 p = co * scale;
+        float md = 0.5 + 0.5 * rnd;
+        float diag = BLVor_distance_3(float3(0.0, 0.0, 0.0), float3(md, md, md), metric, exponent);
+        float maxDistance = diag;
+        float sm = clamp(smoothness / 2.0, 0.0, 0.5);
+        float dist;
+        float3 col;
+        float4 pos;
+        if (sm != 0.0) {
+            BLVor_fractal_smoothf1_3(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
+                                     maxDistance, normalize01, scale, dist, col, pos);
+        }
+        else {
+            BLVor_fractal_f1_3(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                     maxDistance, normalize01, scale, dist, col, pos);
+        }
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiF2_3D(in float3 co, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float3 p = co * scale;
+        float md = 0.5 + 0.5 * rnd;
+        float diag = BLVor_distance_3(float3(0.0, 0.0, 0.0), float3(md, md, md), metric, exponent);
+        float maxDistance = diag * 2.0;
+        float dist;
+        float3 col;
+        float4 pos;
+        BLVor_fractal_f2_3(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, dist, col, pos);
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiDistToEdge_3D(in float3 co, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float normalize01, out float outDistance)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float3 p = co * scale;
+        float maxDistance = 0.5 + 0.5 * rnd;
+
+        outDistance = BLVor_fractal_d2e_3(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
+    }
+
+    // Not fractalised upstream, so there is no detail / roughness / lacunarity here.
+    Function TexVoronoiRadius_3D(in float3 co, in float scale, in float randomness,
+                        out float outRadius)
+    {
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float3 p = co * scale;
+        outRadius = BLVor_n_sphere_radius_3(p, rnd);
+    }
+
+    Function TexVoronoiF1_4D(in float3 co, in float w, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float4 p = float4(co * scale, w * scale);
+        float md = 0.5 + 0.5 * rnd;
+        float diag = BLVor_distance_4(float4(0.0, 0.0, 0.0, 0.0), float4(md, md, md, md), metric, exponent);
+        float maxDistance = diag;
+        float dist;
+        float3 col;
+        float4 pos;
+        BLVor_fractal_f1_4(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, dist, col, pos);
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiSmoothF1_4D(in float3 co, in float w, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float smoothness, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float4 p = float4(co * scale, w * scale);
+        float md = 0.5 + 0.5 * rnd;
+        float diag = BLVor_distance_4(float4(0.0, 0.0, 0.0, 0.0), float4(md, md, md, md), metric, exponent);
+        float maxDistance = diag;
+        float sm = clamp(smoothness / 2.0, 0.0, 0.5);
+        float dist;
+        float3 col;
+        float4 pos;
+        if (sm != 0.0) {
+            BLVor_fractal_smoothf1_4(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
+                                     maxDistance, normalize01, scale, dist, col, pos);
+        }
+        else {
+            BLVor_fractal_f1_4(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                     maxDistance, normalize01, scale, dist, col, pos);
+        }
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiF2_4D(in float3 co, in float w, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float metric, in float exponent, in float normalize01,
+                        out float outDistance, out float3 outColor, out float3 outPosition,
+                        out float outW)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float4 p = float4(co * scale, w * scale);
+        float md = 0.5 + 0.5 * rnd;
+        float diag = BLVor_distance_4(float4(0.0, 0.0, 0.0, 0.0), float4(md, md, md, md), metric, exponent);
+        float maxDistance = diag * 2.0;
+        float dist;
+        float3 col;
+        float4 pos;
+        BLVor_fractal_f2_4(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, dist, col, pos);
+
+        outDistance = dist;
+        outColor = col;
+        outPosition = pos.xyz;
+        outW = pos.w;
+    }
+
+    Function TexVoronoiDistToEdge_4D(in float3 co, in float w, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float randomness,
+                        in float normalize01, out float outDistance)
+    {
+        float dt = clamp(detail, 0.0, 15.0);
+        float rg = clamp(roughness, 0.0, 1.0);
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float4 p = float4(co * scale, w * scale);
+        float maxDistance = 0.5 + 0.5 * rnd;
+
+        outDistance = BLVor_fractal_d2e_4(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
+    }
+
+    // Not fractalised upstream, so there is no detail / roughness / lacunarity here.
+    Function TexVoronoiRadius_4D(in float3 co, in float w, in float scale, in float randomness,
+                        out float outRadius)
+    {
+        float rnd = clamp(randomness, 0.0, 1.0);
+        float4 p = float4(co * scale, w * scale);
+        outRadius = BLVor_n_sphere_radius_4(p, rnd);
+    }
+}

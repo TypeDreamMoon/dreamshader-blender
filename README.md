@@ -48,7 +48,7 @@ Copy it out of `DShader/Packages` before building it — a `.dsm` inside a packa
 | Magic Texture | `BL::TexMagic` | `Magic.dsh` | ported |
 | Wave Texture, bands/rings × 4 directions × 3 profiles | `BL::TexWave` | `Wave.dsh` | ported |
 | Brick Texture | `BL::TexBrick` | `Brick.dsh` | ported |
-| Voronoi Texture | — | — | next |
+| Voronoi Texture, all 5 features × 4 dimensions × 4 metrics | `BL::TexVoronoi*_*D` | `Voronoi.dsh` | ported |
 | Gabor Texture | — | — | next |
 | Converter / Color / Vector families | — | — | planned |
 | BSDF closures | — | — | out of scope without Substrate; see below |
