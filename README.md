@@ -39,12 +39,22 @@ Copy it out of `DShader/Packages` before building it — a `.dsm` inside a packa
 
 ## Status
 
-| Blender node | Entry point | State |
-| :-- | :-- | :-- |
-| Noise Texture, 1D–4D, all five fractal types | `BL::TexNoise*D`, `BL::TexNoiseTyped*D` | ported |
-| Voronoi, Wave, Magic, Checker, Brick, Gradient, White Noise, Gabor | — | next |
-| Converter / Color / Vector families | — | planned |
-| BSDF closures | — | out of scope without Substrate; see below |
+| Blender node | Entry point | Header | State |
+| :-- | :-- | :-- | :-- |
+| Noise Texture, 1D–4D, all five fractal types | `BL::TexNoise*D`, `BL::TexNoiseTyped*D` | `Noise.dsh` | ported |
+| White Noise Texture, 1D–4D | `BL::TexWhiteNoise*D` | `WhiteNoise.dsh` | ported |
+| Checker Texture | `BL::TexChecker` | `Checker.dsh` | ported |
+| Gradient Texture, all 7 types | `BL::TexGradient` | `Gradient.dsh` | ported |
+| Magic Texture | `BL::TexMagic` | `Magic.dsh` | ported |
+| Wave Texture, bands/rings × 4 directions × 3 profiles | `BL::TexWave` | `Wave.dsh` | ported |
+| Brick Texture | `BL::TexBrick` | `Brick.dsh` | ported |
+| Voronoi Texture | — | — | next |
+| Gabor Texture | — | — | next |
+| Converter / Color / Vector families | — | — | planned |
+| BSDF closures | — | — | out of scope without Substrate; see below |
+
+Import a single header when you only need one family — the closure is inlined as text, so a
+narrow import means a smaller generated include and a shorter shader compile.
 
 ### API
 
@@ -174,7 +184,7 @@ HLSL compiles — the commandlet runs with `-nullrhi`. Every defect found so far
 it. Always run both; the pair takes well under a minute:
 
 ```bash
-pwsh -File Plugins/DreamShader/.skill/dsc.ps1 compile DShader/Materials/Blender/M_BL_TexNoise_Parity.dsm -Force
+pwsh -File Plugins/DreamShader/.skill/dsc.ps1 compile DShader/Materials/Blender/M_BL_Textures_Parity.dsm -Force
 ```
 
 ```bash

@@ -1,0 +1,76 @@
+// Blender's Wave Texture node (`ShaderNodeTexWave`).
+//
+// Source: intern/cycles/kernel/svm/wave.h — Apache-2.0. See NOTICE.
+//
+// Three dropdowns, all passed as floats. This package's encodings:
+//
+//   type        0 Bands  |  1 Rings
+//   direction   Bands: 0 X, 1 Y, 2 Z, 3 Diagonal   |   Rings: 0 X, 1 Y, 2 Z, 3 Spherical
+//   profile     0 Sine  |  1 Saw  |  2 Triangle
+//
+// The two direction dropdowns share one input because Blender only ever shows one of them —
+// which it shows depends on `type`, and so does the meaning of the value here.
+//
+// The distortion term runs fBM at a fixed lacunarity of 2.0 with Normalize on. That is upstream's
+// hard-coding, not an omission.
+
+import "Noise.dsh";
+
+Function BLWave_fac(in float3 p, in float type, in float direction, in float profile,
+                        in float distortion, in float detail, in float dscale,
+                        in float droughness, in float phase, out float result)
+{
+    // Same unit-coordinate nudge as Checker.
+    float3 q = (p + 0.000001) * 0.999999;
+
+    float n;
+
+    if (type < 0.5) {
+        // Bands
+        if (direction < 0.5)      { n = q.x * 20.0; }
+        else if (direction < 1.5) { n = q.y * 20.0; }
+        else if (direction < 2.5) { n = q.z * 20.0; }
+        else                      { n = (q.x + q.y + q.z) * 10.0; }
+    }
+    else {
+        // Rings — the direction masks out one axis; Spherical masks none.
+        float3 rp = q;
+        if (direction < 0.5)      { rp *= float3(0.0, 1.0, 1.0); }
+        else if (direction < 1.5) { rp *= float3(1.0, 0.0, 1.0); }
+        else if (direction < 2.5) { rp *= float3(1.0, 1.0, 0.0); }
+
+        n = length(rp) * 20.0;
+    }
+
+    n += phase;
+
+    if (distortion != 0.0) {
+        float d = BLNoise_fbm_3d(q * dscale, detail, droughness, 2.0, 1.0);
+        n += distortion * (d * 2.0 - 1.0);
+    }
+
+    if (profile < 0.5) {
+        result = 0.5 + 0.5 * sin(n - 1.57079632679489662);
+    }
+    else if (profile < 1.5) {
+        float ns = n / 6.28318530717958648;
+        result = ns - floor(ns);
+    }
+    else {
+        float nt = n / 6.28318530717958648;
+        result = abs(nt - floor(nt + 0.5)) * 2.0;
+    }
+}
+
+Namespace(Name = "BL")
+{
+    Function TexWave(in float3 co, in float scale, in float distortion, in float detail,
+                     in float detailScale, in float detailRoughness, in float phase,
+                     in float type, in float direction, in float profile,
+                     out float fac, out float3 color)
+    {
+        fac = BLWave_fac(co * scale, type, direction, profile, distortion, detail,
+                         detailScale, detailRoughness, phase);
+        color = float3(fac, fac, fac);
+    }
+}

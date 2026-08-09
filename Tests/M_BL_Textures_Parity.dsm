@@ -1,0 +1,136 @@
+// Compile gate for @typedreammoon/dreamshader-blender.
+//
+// A .dsm under DShader/Packages is never compiled by any path, so this file proves nothing where
+// it sits. Copy it into the consuming project's own tree — DShader/Materials/Blender/ by
+// convention — and build that copy.
+//
+// Every public entry point is wired into the output with a non-zero weight so none can be dead-
+// code eliminated. Every dropdown is a parameter rather than a literal on purpose: a dynamic
+// selector forces all of that node's variants through the shader compiler, which is the point of
+// a gate and the opposite of what you want in a real material.
+
+import "@typedreammoon/dreamshader-blender/Library/Blender.dsh";
+
+Shader(Name = "Blender/M_BL_Textures_Parity")
+{
+    Properties = {
+        ScalarParameter Scale = 5.0 [
+            Group="Shared | Inputs"; SortPriority=10;
+        ];
+        ScalarParameter Detail = 2.0 [
+            Group="Shared | Inputs"; SortPriority=20;
+        ];
+        ScalarParameter Roughness = 0.5 [
+            Group="Shared | Inputs"; SortPriority=30;
+        ];
+        ScalarParameter Lacunarity = 2.0 [
+            Group="Shared | Inputs"; SortPriority=40;
+        ];
+        ScalarParameter Distortion = 0.3 [
+            Group="Shared | Inputs"; SortPriority=50;
+        ];
+        ScalarParameter WCoord = 0.5 [
+            Group="Shared | Inputs"; SortPriority=60;
+        ];
+        ScalarParameter NoiseOffset = 0.0 [
+            Group="Noise | Inputs"; SortPriority=70;
+        ];
+        ScalarParameter NoiseGain = 1.0 [
+            Group="Noise | Inputs"; SortPriority=80;
+        ];
+        ScalarParameter NoiseType = 0.0 [
+            Group="Noise | Options"; SortPriority=90;
+            Description="0 fBM, 1 Multifractal, 2 Hybrid, 3 Ridged, 4 Hetero Terrain";
+        ];
+        // Not named `Normalize`: the 19 math builtins shadow same-named properties inside a
+        // Graph block, silently. `normalize` is one of them.
+        ScalarParameter NormalizeOutput = 1.0 [
+            Group="Noise | Options"; SortPriority=100;
+        ];
+
+        ScalarParameter GradientType = 0.0 [
+            Group="Gradient | Options"; SortPriority=110;
+            Description="0 Linear .. 6 Radial";
+        ];
+
+        ScalarParameter WaveType = 0.0 [
+            Group="Wave | Options"; SortPriority=120;
+        ];
+        ScalarParameter WaveDirection = 0.0 [
+            Group="Wave | Options"; SortPriority=130;
+        ];
+        ScalarParameter WaveProfile = 0.0 [
+            Group="Wave | Options"; SortPriority=140;
+        ];
+
+        ScalarParameter MagicDepth = 2.0 [
+            Group="Magic | Options"; SortPriority=150;
+        ];
+    }
+
+    Settings = {
+        Domain = "Surface";
+        ShadingModel = "Unlit";
+    }
+
+    Outputs = {
+        float3 EmissiveColor;
+        Base.EmissiveColor = EmissiveColor;
+    }
+
+    Graph = {
+        float2 uv = UE.TexCoord(Index=0);
+        float3 p = float3(uv.x, uv.y, 0.0);
+        float3 white = float3(1.0, 1.0, 1.0);
+        float3 black = float3(0.0, 0.0, 0.0);
+        float3 grey = float3(0.5, 0.5, 0.5);
+
+        // Noise Texture — fBM shorthand, all four dimensions.
+        BL::TexNoise1D(uv.x, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput,
+                       NFac1, NCol1);
+        BL::TexNoise2D(uv, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput,
+                       NFac2, NCol2);
+        BL::TexNoise3D(p, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput,
+                       NFac3, NCol3);
+        BL::TexNoise4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, Distortion,
+                       NormalizeOutput, NFac4, NCol4);
+
+        // Noise Texture — full node, all four dimensions, dynamic type.
+        BL::TexNoiseTyped1D(uv.x, Scale, Detail, Roughness, Lacunarity, NoiseOffset, NoiseGain,
+                            Distortion, NoiseType, NormalizeOutput, TFac1, TCol1);
+        BL::TexNoiseTyped2D(uv, Scale, Detail, Roughness, Lacunarity, NoiseOffset, NoiseGain,
+                            Distortion, NoiseType, NormalizeOutput, TFac2, TCol2);
+        BL::TexNoiseTyped3D(p, Scale, Detail, Roughness, Lacunarity, NoiseOffset, NoiseGain,
+                            Distortion, NoiseType, NormalizeOutput, TFac3, TCol3);
+        BL::TexNoiseTyped4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, NoiseOffset,
+                            NoiseGain, Distortion, NoiseType, NormalizeOutput, TFac4, TCol4);
+
+        // White Noise, all four dimensions.
+        BL::TexWhiteNoise1D(uv.x, WFac1, WCol1);
+        BL::TexWhiteNoise2D(uv, WFac2, WCol2);
+        BL::TexWhiteNoise3D(p, WFac3, WCol3);
+        BL::TexWhiteNoise4D(p, WCoord, WFac4, WCol4);
+
+        // The single-variant nodes.
+        BL::TexChecker(p, white, black, Scale, ChkFac, ChkCol);
+        BL::TexGradient(p, GradientType, GrdFac, GrdCol);
+        BL::TexMagic(p, Scale, MagicDepth, Distortion, MagFac, MagCol);
+        BL::TexWave(p, Scale, Distortion, Detail, Scale, Roughness, WCoord,
+                    WaveType, WaveDirection, WaveProfile, WavFac, WavCol);
+        BL::TexBrick(p, white, grey, black, Scale, 0.02, 0.1, 0.0, 0.5, 0.25,
+                     0.5, 2.0, 1.0, 2.0, BrkFac, BrkCol);
+
+        float3 noiseFacs = float3(NFac1, NFac2, NFac4);
+        float3 typedFacs = float3(TFac1, TFac2, TFac4);
+        float3 whiteFacs = float3(WFac1, WFac2, WFac4);
+        float3 otherFacs = float3(ChkFac, GrdFac, MagFac);
+        float3 tailFacs = float3(WavFac, BrkFac, NFac3);
+        float3 restFacs = float3(TFac3, WFac3, NFac3);
+
+        float3 cols = NCol1 + NCol2 + NCol3 + NCol4 + TCol1 + TCol2 + TCol3 + TCol4;
+        float3 cols2 = WCol1 + WCol2 + WCol3 + WCol4 + ChkCol + GrdCol + MagCol + WavCol + BrkCol;
+
+        EmissiveColor = (noiseFacs + typedFacs + whiteFacs + otherFacs + tailFacs + restFacs
+                        + cols + cols2) * 0.02;
+    }
+}

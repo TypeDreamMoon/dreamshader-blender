@@ -19,16 +19,17 @@ point costs minutes under fxc — `TexNoiseTyped4D` alone with a dynamic type me
 the two targeted entries above reach every function in the library in about 12 s. `-Thorough`
 adds the union to the SM5 pass when you want it anyway.
 
-`M_BL_TexNoise_Parity.dsm` — the material the gate compiles. It calls all four entry points with
-non-zero weights so none can be dead-code eliminated. Like everything else under `Packages`, a
-`.dsm` here is never compiled in place: copy it into the consuming project's `DShader/` tree
+`M_BL_Textures_Parity.dsm` — the material the gate compiles. It calls every public entry point in
+the package with a non-zero weight so none can be dead-code eliminated, and drives every dropdown
+from a parameter so no variant folds away. Like everything else under `Packages`, a `.dsm` here is
+never compiled in place: copy it into the consuming project's `DShader/` tree
 (`DShader/Materials/Blender/` by convention) and build that copy.
 
 Run the DreamShader compile first — `compile-hlsl.ps1` reads what that run generated, it does not
 generate anything itself.
 
 ```bash
-pwsh -File Plugins/DreamShader/.skill/dsc.ps1 compile DShader/Materials/Blender/M_BL_TexNoise_Parity.dsm -Force
+pwsh -File Plugins/DreamShader/.skill/dsc.ps1 compile DShader/Materials/Blender/M_BL_Textures_Parity.dsm -Force
 ```
 
 ```bash

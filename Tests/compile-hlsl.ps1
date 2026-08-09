@@ -147,7 +147,7 @@ try {
     # these two together still reach every function in the library.
     if ($fxc) {
         Write-Host "fxc     : $fxc"
-        $sm5 = @('EP_Fbm4D', 'EP_Typed3D_Dynamic')
+        $sm5 = @('EP_Fbm4D', 'EP_Typed3D_Dynamic', 'EP_NonNoise')
         if ($Thorough) { $sm5 += 'MainPS' }
 
         foreach ($ep in $sm5) {

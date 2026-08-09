@@ -1,0 +1,50 @@
+// Blender's Gradient Texture node (`ShaderNodeTexGradient`).
+//
+// Source: intern/cycles/kernel/svm/gradient.h — Apache-2.0. See NOTICE.
+//
+// `type` is this package's own encoding, in the order Blender's dropdown lists them:
+//
+//   0 Linear  |  1 Quadratic  |  2 Easing  |  3 Diagonal
+//   4 Spherical  |  5 Quadratic Sphere  |  6 Radial
+
+Function BLGradient_fac(in float3 p, in float type, out float result)
+{
+    float x = p.x;
+    float y = p.y;
+    float z = p.z;
+
+    if (type < 0.5) {
+        result = x;
+    }
+    else if (type < 1.5) {
+        float rq = max(x, 0.0);
+        result = rq * rq;
+    }
+    else if (type < 2.5) {
+        float re = min(max(x, 0.0), 1.0);
+        float t = re * re;
+        result = 3.0 * t - 2.0 * t * re;
+    }
+    else if (type < 3.5) {
+        result = (x + y) * 0.5;
+    }
+    else if (type < 5.5) {
+        // Spherical and Quadratic Sphere share the radius. The 0.999999 bias makes a unit-length
+        // input land on exactly zero instead of float noise.
+        float rs = max(0.999999 - sqrt(x * x + y * y + z * z), 0.0);
+        result = (type < 4.5) ? rs : (rs * rs);
+    }
+    else {
+        result = atan2(y, x) / 6.28318530717958648 + 0.5;
+    }
+}
+
+Namespace(Name = "BL")
+{
+    Function TexGradient(in float3 co, in float type, out float fac, out float3 color)
+    {
+        float f = BLGradient_fac(co, type);
+        fac = saturate(f);
+        color = float3(fac, fac, fac);
+    }
+}

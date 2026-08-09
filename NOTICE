@@ -42,6 +42,17 @@ The upstream licence of each ported file, as declared by its own SPDX header:
       SPDX-FileCopyrightText: 2011-2022 Blender Foundation
       SPDX-License-Identifier: Apache-2.0
       -> Library/Noise.dsh (floorfrac, inlined at each call site)
+      -> Library/Brick.dsh (smoothstepf, inlined)
+
+  intern/cycles/kernel/svm/white_noise.h
+  intern/cycles/kernel/svm/checker.h
+  intern/cycles/kernel/svm/gradient.h
+  intern/cycles/kernel/svm/magic.h
+  intern/cycles/kernel/svm/wave.h
+  intern/cycles/kernel/svm/brick.h
+      SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+      SPDX-License-Identifier: Apache-2.0
+      -> Library/WhiteNoise.dsh, Checker.dsh, Gradient.dsh, Magic.dsh, Wave.dsh, Brick.dsh
 
 --------------------------------------------------------------------------------
 BSD-3-Clause (Open Shading Language derived code)

@@ -1,10 +1,16 @@
 // dreamshader-blender — umbrella header.
 //
 // Importing this pulls in every node family the package implements. Import an individual header
-// instead when you only need one; the import closure is inlined as text, so a narrower import is
-// a smaller translation unit and a smaller generated include.
+// instead when you only need one: the import closure is inlined as text, so a narrower import is
+// a smaller translation unit, a smaller generated include, and a shorter shader compile.
 //
-// Diamond imports are safe: a file already inlined in this translation unit is skipped.
+// Diamond imports are safe — a file already inlined in this translation unit is skipped.
 
 import "Hash.dsh";
 import "Noise.dsh";
+import "WhiteNoise.dsh";
+import "Checker.dsh";
+import "Gradient.dsh";
+import "Magic.dsh";
+import "Wave.dsh";
+import "Brick.dsh";

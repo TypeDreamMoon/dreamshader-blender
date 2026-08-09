@@ -1,0 +1,33 @@
+// Blender's Checker Texture node (`ShaderNodeTexChecker`).
+//
+// Source: intern/cycles/kernel/svm/checker.h — Apache-2.0. See NOTICE.
+
+Function BLChecker_fac(in float3 p, out float result)
+{
+    // Upstream's nudge away from exact unit coordinates, where floor() would otherwise flip a
+    // whole face of a default cube into the wrong square.
+    float3 q = (p + 0.000001) * 0.999999;
+
+    int xi = abs(int(floor(q.x)));
+    int yi = abs(int(floor(q.y)));
+    int zi = abs(int(floor(q.z)));
+
+    // Upstream is `((xi % 2 == yi % 2) == (zi % 2))`, comparing a C bool against an int. Spelled
+    // out here because HLSL will not do that promotion for you.
+    //
+    // `& 1` rather than `% 2`: all three are already abs(), so the values are non-negative and
+    // the two are identical, but fxc warns that signed modulus is slow. Brick keeps `%` because
+    // there the operand really can be negative and the sign of the result is load-bearing.
+    int xy = ((xi & 1) == (yi & 1)) ? 1 : 0;
+    result = (xy == (zi & 1)) ? 1.0 : 0.0;
+}
+
+Namespace(Name = "BL")
+{
+    Function TexChecker(in float3 co, in float3 color1, in float3 color2, in float scale,
+                        out float fac, out float3 color)
+    {
+        fac = BLChecker_fac(co * scale);
+        color = (fac == 1.0) ? color1 : color2;
+    }
+}

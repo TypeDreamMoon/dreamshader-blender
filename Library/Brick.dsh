@@ -1,0 +1,92 @@
+// Blender's Brick Texture node (`ShaderNodeTexBrick`).
+//
+// Source: intern/cycles/kernel/svm/brick.h — Apache-2.0. See NOTICE.
+//
+// `offsetFrequency` and `squashFrequency` are node properties, and both must be non-zero for
+// either offset or squash to apply at all — upstream gates them on a single `&&`, so a zero in
+// one silently disables the other.
+
+// A small integer noise, unrelated to the Perlin hashes. Upstream keeps it because the brick
+// tints have to stay stable across versions.
+Function BLBrick_noise(in uint n, out float result)
+{
+    uint m = (n + 1013u) & 0x7fffffffu;
+    m = (m >> 13u) ^ m;
+    uint nn = (m * (m * m * 60493u + 19990303u) + 1376312589u) & 0x7fffffffu;
+    result = 0.5 * (float(nn) / 1073741824.0);
+}
+
+Function BLBrick_tint_mortar(in float3 p, in float mortarSize, in float mortarSmooth,
+                        in float bias, in float brickWidth, in float rowHeight,
+                        in float offsetAmount, in float offsetFrequency,
+                        in float squashAmount, in float squashFrequency,
+                        out float tint, out float mortar)
+{
+    float bw = brickWidth;
+    float offset = 0.0;
+
+    int rownum = int(floor(p.y / rowHeight));
+    int offsetFreq = int(offsetFrequency);
+    int squashFreq = int(squashFrequency);
+
+    // fxc warns X3556 on these two (signed modulus is slow). Accepted, not fixed: `rownum` is
+    // negative below the origin, and C truncated-division semantics — the sign of the remainder
+    // following the dividend — is what decides which rows offset and which squash. Switching to
+    // uint would give a different brick pattern in negative V.
+    if ((offsetFreq != 0) && (squashFreq != 0)) {
+        bw *= ((rownum % squashFreq) != 0) ? 1.0 : squashAmount;
+        offset = ((rownum % offsetFreq) != 0) ? 0.0 : (bw * offsetAmount);
+    }
+
+    int bricknum = int(floor((p.x + offset) / bw));
+
+    float x = (p.x + offset) - bw * bricknum;
+    float y = p.y - rowHeight * rownum;
+
+    // Upstream passes a signed int into an unsigned parameter; asuint is that conversion.
+    uint key = asuint((rownum << 16) + (bricknum & 0xFFFF));
+    float bn = BLBrick_noise(key);
+    tint = saturate(bn + bias);
+
+    float minDist = min(min(x, y), min(bw - x, rowHeight - y));
+
+    if (minDist >= mortarSize) {
+        mortar = 0.0;
+    }
+    else if (mortarSmooth == 0.0) {
+        mortar = 1.0;
+    }
+    else {
+        float t = 1.0 - minDist / mortarSize;
+        // smoothstepf: clamped, then the usual 3t^2 - 2t^3.
+        float ts = min(max(t / mortarSmooth, 0.0), 1.0);
+        mortar = 3.0 * ts * ts - 2.0 * ts * ts * ts;
+    }
+}
+
+Namespace(Name = "BL")
+{
+    Function TexBrick(in float3 co, in float3 color1, in float3 color2, in float3 mortarColor,
+                      in float scale, in float mortarSize, in float mortarSmooth, in float bias,
+                      in float brickWidth, in float rowHeight,
+                      in float offsetAmount, in float offsetFrequency,
+                      in float squashAmount, in float squashFrequency,
+                      out float fac, out float3 color)
+    {
+        float tint;
+        float mortar;
+        BLBrick_tint_mortar(co * scale, mortarSize, mortarSmooth, bias, brickWidth, rowHeight,
+                            offsetAmount, offsetFrequency, squashAmount, squashFrequency,
+                            tint, mortar);
+
+        // Upstream skips the tint blend when the pixel is pure mortar, which is a real behaviour
+        // difference and not just an optimisation: at f == 1 the brick colour never contributes.
+        float3 brick = color1;
+        if (mortar != 1.0) {
+            brick = (1.0 - tint) * color1 + tint * color2;
+        }
+
+        color = brick * (1.0 - mortar) + mortarColor * mortar;
+        fac = mortar;
+    }
+}

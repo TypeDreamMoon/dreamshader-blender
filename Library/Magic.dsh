@@ -1,0 +1,97 @@
+// Blender's Magic Texture node (`ShaderNodeTexMagic`).
+//
+// Source: intern/cycles/kernel/svm/magic.h — Apache-2.0. See NOTICE.
+//
+// `depth` is the node's Depth property, 0..10. It is a property rather than a socket in Blender,
+// so pass a literal unless you have a reason not to — the ladder below is a chain of dependent
+// branches and a dynamic depth compiles all of them.
+
+Function BLMagic_color(in float3 p, in float scale, in float depth, in float distortion,
+                        out float3 result)
+{
+    // Wrapping into [-2pi, 2pi] first: without it, (px+py+pz)*5 overflows into Inf for large
+    // coordinates and sin/cos return NaN, and a large disparity between components shows up as
+    // banding from the smaller one losing precision.
+    float px = fmod(p.x * scale, 6.28318530717958648);
+    float py = fmod(p.y * scale, 6.28318530717958648);
+    float pz = fmod(p.z * scale, 6.28318530717958648);
+
+    float x = sin(( px + py + pz) * 5.0);
+    float y = cos((-px + py - pz) * 5.0);
+    float z = -cos((-px - py + pz) * 5.0);
+
+    float d = distortion;
+    int n = int(depth);
+
+    if (n > 0) {
+        x *= d;
+        y *= d;
+        z *= d;
+        y = -cos(x - y + z);
+        y *= d;
+
+        if (n > 1) {
+            x = cos(x - y - z);
+            x *= d;
+
+            if (n > 2) {
+                z = sin(-x - y - z);
+                z *= d;
+
+                if (n > 3) {
+                    x = -cos(-x + y - z);
+                    x *= d;
+
+                    if (n > 4) {
+                        y = -sin(-x + y + z);
+                        y *= d;
+
+                        if (n > 5) {
+                            y = -cos(-x + y + z);
+                            y *= d;
+
+                            if (n > 6) {
+                                x = cos(x + y + z);
+                                x *= d;
+
+                                if (n > 7) {
+                                    z = sin(x + y - z);
+                                    z *= d;
+
+                                    if (n > 8) {
+                                        x = -cos(-x - y + z);
+                                        x *= d;
+
+                                        if (n > 9) {
+                                            y = -sin(x - y + z);
+                                            y *= d;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (d != 0.0) {
+        float dd = d * 2.0;
+        x /= dd;
+        y /= dd;
+        z /= dd;
+    }
+
+    result = float3(0.5 - x, 0.5 - y, 0.5 - z);
+}
+
+Namespace(Name = "BL")
+{
+    Function TexMagic(in float3 co, in float scale, in float depth, in float distortion,
+                      out float fac, out float3 color)
+    {
+        color = BLMagic_color(co, scale, depth, distortion);
+        fac = (color.x + color.y + color.z) / 3.0;
+    }
+}

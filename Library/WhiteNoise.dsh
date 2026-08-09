@@ -1,0 +1,37 @@
+// Blender's White Noise Texture node (`ShaderNodeTexWhiteNoise`).
+//
+// Source: intern/cycles/kernel/svm/white_noise.h — Apache-2.0. See NOTICE.
+//
+// The node is a thin wrapper over the hashes: Value is the scalar hash of the coordinate, Color
+// is the float3 hash of the same coordinate. There is no scale input — the coordinate goes in
+// unmodified.
+
+import "Hash.dsh";
+
+Namespace(Name = "BL")
+{
+    Function TexWhiteNoise1D(in float w, out float value, out float3 color)
+    {
+        value = BLHash_float1_to_float(w);
+        color = BLHash_float1_to_float3(w);
+    }
+
+    Function TexWhiteNoise2D(in float2 co, out float value, out float3 color)
+    {
+        value = BLHash_float2_to_float(co);
+        color = BLHash_float2_to_float3(co);
+    }
+
+    Function TexWhiteNoise3D(in float3 co, out float value, out float3 color)
+    {
+        value = BLHash_float3_to_float(co);
+        color = BLHash_float3_to_float3(co);
+    }
+
+    Function TexWhiteNoise4D(in float3 co, in float w, out float value, out float3 color)
+    {
+        float4 p = float4(co, w);
+        value = BLHash_float4_to_float(p);
+        color = BLHash_float4_to_float3(p);
+    }
+}

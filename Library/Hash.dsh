@@ -151,3 +151,40 @@ Function BLHash_float4_to_float(in float4 k, out float result)
     uint h = BLHash_uint4(asuint(k.x), asuint(k.y), asuint(k.z), asuint(k.w));
     result = BLHash_uint_to_float_incl(h);
 }
+
+// Hashing a float or floatN into a float3 of components in [0, 1].
+//
+// The component recipes look arbitrary because they are: upstream keeps this exact behaviour to
+// stay reproducible in OSL, which has neither bit casts nor unsigned integers. A "cleaner" set of
+// seeds would be a different texture.
+Function BLHash_float1_to_float3(in float k, out float3 result)
+{
+    float a = BLHash_float1_to_float(k);
+    float b = BLHash_float2_to_float(float2(k, 1.0));
+    float c = BLHash_float2_to_float(float2(k, 2.0));
+    result = float3(a, b, c);
+}
+
+Function BLHash_float2_to_float3(in float2 k, out float3 result)
+{
+    float a = BLHash_float2_to_float(k);
+    float b = BLHash_float3_to_float(float3(k.x, k.y, 1.0));
+    float c = BLHash_float3_to_float(float3(k.x, k.y, 2.0));
+    result = float3(a, b, c);
+}
+
+Function BLHash_float3_to_float3(in float3 k, out float3 result)
+{
+    float a = BLHash_float3_to_float(k);
+    float b = BLHash_float4_to_float(float4(k.x, k.y, k.z, 1.0));
+    float c = BLHash_float4_to_float(float4(k.x, k.y, k.z, 2.0));
+    result = float3(a, b, c);
+}
+
+Function BLHash_float4_to_float3(in float4 k, out float3 result)
+{
+    float a = BLHash_float4_to_float(k);
+    float b = BLHash_float4_to_float(float4(k.z, k.x, k.w, k.y));
+    float c = BLHash_float4_to_float(float4(k.w, k.z, k.y, k.x));
+    result = float3(a, b, c);
+}
