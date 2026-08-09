@@ -64,7 +64,9 @@ Write-Host "compiler : $gpp"
 # ---- fetch the upstream kernels ------------------------------------------------------------------
 
 $cache = Join-Path $here "cache/$Ref"
-$files = @('util/hash.h', 'util/color.h', 'kernel/svm/noise.h', 'kernel/svm/fractal_noise.h')
+$files = @('util/hash.h', 'util/color.h', 'util/projection.h',
+           'kernel/svm/noise.h', 'kernel/svm/fractal_noise.h',
+           'kernel/svm/voronoi.h', 'kernel/svm/gabor.h')
 foreach ($f in $files) {
     $dest = Join-Path $cache $f
     if (Test-Path -LiteralPath $dest) { continue }
@@ -104,28 +106,71 @@ $src = $src -replace '(?<![\w.])(\d+\.\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)
 
 Set-Content -LiteralPath (Join-Path $build 'Generated.ush') -Value $src -NoNewline
 
-# util/color.h is fetched whole but only four functions are wanted from it: the rest of the file
-# is Cycles' spectral-rendering pipeline, which would drag in most of kernel/types.h for nothing.
-# They are excerpted *by name* from the downloaded file rather than copied by hand, so what gets
-# compiled is still upstream's own text.
-$colorSrc = Get-Content -LiteralPath (Join-Path $cache 'util/color.h') -Raw
-$wanted = @('rgb_to_hsv', 'hsv_to_rgb', 'rgb_to_hsl', 'hsl_to_rgb')
-$excerpt = @('#pragma once', '#include "util/math.h"', 'CCL_NAMESPACE_BEGIN', '')
-foreach ($fn in $wanted) {
-    $start = $colorSrc.IndexOf("ccl_device float3 $fn(")
-    if ($start -lt 0) { throw "util/color.h no longer defines $fn - upstream moved it." }
+# Three upstream files are wanted only in part. Everything skipped is a scene-dependent entry
+# point — the SVM node functions that read the bytecode stack, and Cycles' spectral pipeline —
+# none of which has any bearing on the maths under test, and all of which would drag most of
+# kernel/types.h in behind it.
+#
+# The excerpting is mechanical and by name, never by hand: what gets compiled is still upstream's
+# own text, character for character. A rename upstream throws rather than silently comparing less.
+
+function Get-FunctionBody {
+    param([string] $Source, [string] $Signature, [string] $File)
+    $start = $Source.IndexOf($Signature)
+    if ($start -lt 0) { throw "$File no longer contains '$Signature' - upstream moved or renamed it." }
     $depth = 0; $seen = $false; $i = $start
-    while ($i -lt $colorSrc.Length) {
-        if ($colorSrc[$i] -eq '{') { $depth++; $seen = $true }
-        elseif ($colorSrc[$i] -eq '}') { $depth-- }
+    while ($i -lt $Source.Length) {
+        if ($Source[$i] -eq '{') { $depth++; $seen = $true }
+        elseif ($Source[$i] -eq '}') { $depth-- }
         if ($seen -and $depth -eq 0) { break }
         $i++
     }
-    $excerpt += $colorSrc.Substring($start, $i - $start + 1)
+    return $Source.Substring($start, $i - $start + 1)
+}
+
+# util/color.h: four conversions; the rest of the file is the spectral pipeline.
+$colorSrc = Get-Content -LiteralPath (Join-Path $cache 'util/color.h') -Raw
+$excerpt = @('#pragma once', '#include "util/math.h"', 'CCL_NAMESPACE_BEGIN', '')
+foreach ($fn in @('rgb_to_hsv', 'hsv_to_rgb', 'rgb_to_hsl', 'hsl_to_rgb')) {
+    $excerpt += (Get-FunctionBody $colorSrc "ccl_device float3 $fn(" 'util/color.h')
     $excerpt += ''
 }
 $excerpt += 'CCL_NAMESPACE_END'
 Set-Content -LiteralPath (Join-Path $build 'color_subset.h') -Value ($excerpt -join "`n") -NoNewline
+
+# util/projection.h: the two helpers Gabor leans on. Taking them from upstream rather than
+# supplying them from the shim is the whole point — a shim-supplied helper would be compared
+# against itself and always agree.
+$projSrc = Get-Content -LiteralPath (Join-Path $cache 'util/projection.h') -Raw
+$excerpt = @('#pragma once', '#include "util/math.h"', 'CCL_NAMESPACE_BEGIN', '')
+$excerpt += (Get-FunctionBody $projSrc 'ccl_device float3 spherical_to_direction(' 'util/projection.h')
+$excerpt += ''
+$excerpt += (Get-FunctionBody $projSrc 'ccl_device_inline float2 polar_to_cartesian(' 'util/projection.h')
+$excerpt += ''
+$excerpt += 'CCL_NAMESPACE_END'
+Set-Content -LiteralPath (Join-Path $build 'projection_subset.h') -Value ($excerpt -join "`n") -NoNewline
+
+# voronoi.h and gabor.h: everything above the first SVM node entry point. The cut is one rule —
+# stop at the function that starts reading the bytecode stack — rather than a list of names to
+# keep in sync.
+foreach ($pair in @(
+    @{ File = 'kernel/svm/voronoi.h'; Cut = 'ccl_device void svm_voronoi_output('; Out = 'voronoi_subset.h' },
+    @{ File = 'kernel/svm/gabor.h';   Cut = 'ccl_device_noinline void svm_node_tex_gabor('; Out = 'gabor_subset.h' })) {
+
+    $raw = Get-Content -LiteralPath (Join-Path $cache $pair.File) -Raw
+    $cut = $raw.IndexOf($pair.Cut)
+    if ($cut -lt 0) { throw "$($pair.File) no longer contains '$($pair.Cut)' - upstream moved it." }
+
+    # Drop upstream's own includes: the platform layer underneath is the shim's job, and
+    # kernel/svm/node_types.h would pull in the whole scene representation.
+    $body = $raw.Substring(0, $cut) -replace '(?m)^#include .*$', ''
+    $body = $body -replace '(?m)^#pragma once$', ''
+
+    $head = @('#pragma once', '#include "util/math.h"', '#include "util/hash.h"',
+              '#include "util/svm_enums.h"', '')
+    Set-Content -LiteralPath (Join-Path $build $pair.Out) `
+                -Value (($head -join "`n") + $body + "`nCCL_NAMESPACE_END`n") -NoNewline
+}
 
 # ---- build and run ---------------------------------------------------------------------------------
 #

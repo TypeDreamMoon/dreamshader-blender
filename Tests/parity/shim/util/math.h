@@ -93,4 +93,88 @@ ccl_device_inline float len(const float2 a) { return std::sqrt(dot(a, a)); }
 ccl_device_inline float len(const float3 a) { return std::sqrt(dot(a, a)); }
 ccl_device_inline float len(const float4 a) { return std::sqrt(dot(a, a)); }
 
+// ---------------------------------------------------------------------------------------------
+// What the Voronoi and Gabor kernels reach for on top of the above.
+// ---------------------------------------------------------------------------------------------
+
+ccl_device_inline float2 operator-(const float2 a) { return {-a.x, -a.y}; }
+ccl_device_inline float4 operator-(const float4 a) { return {-a.x, -a.y, -a.z, -a.w}; }
+ccl_device_inline float2 operator-(const float2 a, const float s) { return {a.x - s, a.y - s}; }
+ccl_device_inline float4 operator-(const float4 a, const float s) { return {a.x - s, a.y - s, a.z - s, a.w - s}; }
+ccl_device_inline float2 &operator/=(float2 &a, const float s) { a = a / s; return a; }
+ccl_device_inline float3 &operator/=(float3 &a, const float s) { a = a / s; return a; }
+ccl_device_inline float4 &operator/=(float4 &a, const float s) { a = a / s; return a; }
+ccl_device_inline float2 &operator-=(float2 &a, const float2 b) { a = a - b; return a; }
+ccl_device_inline float3 &operator-=(float3 &a, const float3 b) { a = a - b; return a; }
+ccl_device_inline float4 &operator-=(float4 &a, const float4 b) { a = a - b; return a; }
+ccl_device_inline float4 operator/(const float4 a, const float4 b) { return {a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w}; }
+ccl_device_inline float2 operator/(const float2 a, const float2 b) { return {a.x / b.x, a.y / b.y}; }
+
+ccl_device_inline float2 zero_float2() { return {0.0f, 0.0f}; }
+
+// Voronoi floors a whole coordinate and converts between the integer and float cell types.
+ccl_device_inline float2 floor(const float2 a) { return {std::floor(a.x), std::floor(a.y)}; }
+ccl_device_inline float3 floor(const float3 a) { return {std::floor(a.x), std::floor(a.y), std::floor(a.z)}; }
+ccl_device_inline float4 floor(const float4 a) { return {std::floor(a.x), std::floor(a.y), std::floor(a.z), std::floor(a.w)}; }
+
+ccl_device_inline int2 make_int2(const float2 v) { return {int(v.x), int(v.y)}; }
+ccl_device_inline float2 make_float2(const int2 v) { return {float(v.x), float(v.y)}; }
+ccl_device_inline float3 make_float3(const int3 v) { return {float(v.x), float(v.y), float(v.z)}; }
+
+// voronoi_position(float3) packs into a float4 with a zero w.
+ccl_device_inline float4 make_float4(const float3 v) { return {v.x, v.y, v.z, 0.0f}; }
+
+ccl_device_inline float distance(const float2 a, const float2 b) { return len(a - b); }
+ccl_device_inline float distance(const float3 a, const float3 b) { return len(a - b); }
+ccl_device_inline float distance(const float4 a, const float4 b) { return len(a - b); }
+
+ccl_device_inline float len_squared(const float2 a) { return dot(a, a); }
+ccl_device_inline float len_squared(const float3 a) { return dot(a, a); }
+ccl_device_inline float len_squared(const float4 a) { return dot(a, a); }
+
+ccl_device_inline float reduce_add(const float2 a) { return a.x + a.y; }
+ccl_device_inline float reduce_add(const float3 a) { return a.x + a.y + a.z; }
+ccl_device_inline float reduce_add(const float4 a) { return a.x + a.y + a.z + a.w; }
+
+ccl_device_inline float reduce_max(const float2 a) { return fmaxf(a.x, a.y); }
+ccl_device_inline float reduce_max(const float3 a) { return fmaxf(a.x, fmaxf(a.y, a.z)); }
+ccl_device_inline float reduce_max(const float4 a) { return fmaxf(fmaxf(a.x, a.y), fmaxf(a.z, a.w)); }
+
+ccl_device_inline float2 power(const float2 a, const float e) { return {std::pow(a.x, e), std::pow(a.y, e)}; }
+ccl_device_inline float3 power(const float3 a, const float e) { return {std::pow(a.x, e), std::pow(a.y, e), std::pow(a.z, e)}; }
+ccl_device_inline float4 power(const float4 a, const float e) { return {std::pow(a.x, e), std::pow(a.y, e), std::pow(a.z, e), std::pow(a.w, e)}; }
+
+ccl_device_inline float2 normalize(const float2 a) { return a / len(a); }
+ccl_device_inline float3 normalize(const float3 a) { return a / len(a); }
+ccl_device_inline float4 normalize(const float4 a) { return a / len(a); }
+
+ccl_device_inline float2 safe_normalize(const float2 a) { const float t = len(a); return (t != 0.0f) ? a / t : a; }
+ccl_device_inline float3 safe_normalize(const float3 a) { const float t = len(a); return (t != 0.0f) ? a * (1.0f / t) : a; }
+ccl_device_inline float4 safe_normalize(const float4 a) { const float t = len(a); return (t != 0.0f) ? a / t : a; }
+
+ccl_device_inline float2 mix(const float2 a, const float2 b, const float t) { return a + (b - a) * t; }
+ccl_device_inline float3 mix(const float3 a, const float3 b, const float t) { return a + (b - a) * t; }
+ccl_device_inline float4 mix(const float4 a, const float4 b, const float t) { return a + (b - a) * t; }
+
+ccl_device_inline float smoothstep(const float e0, const float e1, const float x)
+{
+  const float t = clamp((x - e0) / (e1 - e0), 0.0f, 1.0f);
+  return t * t * (3.0f - 2.0f * t);
+}
+
+ccl_device_inline float4 safe_divide(const float4 a, const float b)
+{
+  return (b != 0.0f) ? a / b : zero_float4();
+}
+
+ccl_device_inline float expf(const float x) { return std::exp(x); }
+ccl_device_inline float cosf(const float x) { return std::cos(x); }
+ccl_device_inline float sinf(const float x) { return std::sin(x); }
+ccl_device_inline float acosf(const float x) { return std::acos(x); }
+ccl_device_inline float atan2f(const float y, const float x) { return std::atan2(y, x); }
+
+#ifndef M_SQRT2_F
+#  define M_SQRT2_F 1.41421356237309504880f
+#endif
+
 CCL_NAMESPACE_END

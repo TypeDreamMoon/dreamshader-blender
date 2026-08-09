@@ -74,8 +74,13 @@ using hlsl::SamplerState;
 #include "kernel/svm/noise.h"
 #include "util/hash.h"
 
-// The four colour conversions, excerpted from the fetched util/color.h by run.ps1.
+// Excerpted from the fetched upstream files by run.ps1 — see the comments there for what is cut
+// and why. The text compiled here is upstream's, character for character.
 #include "color_subset.h"
+#include "projection_subset.h"
+
+#include "gabor_subset.h"
+#include "voronoi_subset.h"
 
 // ------------------------------------------------------------------------------------------------
 
@@ -331,6 +336,211 @@ int main() {
       feed(l2h, a4.x, b4.x); feed(l2h, a4.y, b4.y); feed(l2h, a4.z, b4.z);
     }
     report(h2v, 0); report(v2h, 0); report(h2l, 0); report(l2h, 0);
+  }
+
+  // ---- Voronoi ----------------------------------------------------------------------------------
+  //
+  // The port splits by feature and dimension where upstream branches at run time, so each of the
+  // twenty combinations is compared against the same upstream function with `params.feature` set.
+  // Randomness stays in 0..1 and smoothness in 0..0.5, which is what the node clamps them to —
+  // outside that the two sides are entitled to disagree because the port clamps at its entry
+  // point and upstream clamps at the SVM node, which is cut away here.
+  {
+    Rng rng;
+    Stat f1_2{"voronoi_f1_2d"}, f1_3{"voronoi_f1_3d"}, f1_4{"voronoi_f1_4d"};
+    Stat sf_2{"voronoi_smooth_f1_2d"}, sf_3{"voronoi_smooth_f1_3d"};
+    Stat f2_3{"voronoi_f2_3d"}, f2_4{"voronoi_f2_4d"};
+    Stat de_2{"voronoi_dist_to_edge_2d"}, de_3{"voronoi_dist_to_edge_3d"};
+    Stat ns_2{"voronoi_n_sphere_2d"}, ns_3{"voronoi_n_sphere_3d"};
+    Stat fr_3{"fractal_voronoi_f1_3d"}, frs_2{"fractal_voronoi_smooth_2d"};
+    Stat fde_3{"fractal_voronoi_edge_3d"};
+
+    for (int i = 0; i < N / 4; i++) {
+      const float x = rng.coord(), y = rng.coord(), z = rng.coord(), w = rng.coord();
+
+      ref::VoronoiParams pr;
+      pr.scale = 1.0f + rng.unit() * 4.0f;
+      pr.detail = rng.unit() * 6.0f;
+      pr.roughness = rng.unit();
+      pr.lacunarity = 1.0f + rng.unit() * 3.0f;
+      pr.smoothness = rng.unit() * 0.5f;
+      pr.exponent = 0.25f + rng.unit() * 4.0f;
+      pr.randomness = rng.unit();
+      pr.max_distance = 0.5f + 0.5f * pr.randomness;
+      pr.normalize = true;
+      pr.feature = ref::NODE_VORONOI_F1;
+      pr.metric = ref::NodeVoronoiDistanceMetric(rng.next() & 3);
+
+      const float me = float(int(pr.metric));
+      const ref::float2 c2 = ref::make_float2(x, y);
+      const ref::float3 c3 = ref::make_float3(x, y, z);
+      const ref::float4 c4 = ref::make_float4(x, y, z, w);
+
+      // f1 — distance, colour and the packed position, all three
+      {
+        hlsl::float3 col; hlsl::float4 pos;
+        const float d = port::DreamShaderFn_BLVor_f1_2({x, y}, pr.randomness, me, pr.exponent, col, pos);
+        const ref::VoronoiOutput o = ref::voronoi_f1(pr, c2);
+        feed(f1_2, d, o.distance);
+        feed(f1_2, col.x, o.color.x); feed(f1_2, col.y, o.color.y); feed(f1_2, col.z, o.color.z);
+        feed(f1_2, pos.x, o.position.x); feed(f1_2, pos.w, o.position.w);
+      }
+      {
+        hlsl::float3 col; hlsl::float4 pos;
+        const float d = port::DreamShaderFn_BLVor_f1_3({x, y, z}, pr.randomness, me, pr.exponent, col, pos);
+        const ref::VoronoiOutput o = ref::voronoi_f1(pr, c3);
+        feed(f1_3, d, o.distance);
+        feed(f1_3, col.x, o.color.x); feed(f1_3, col.z, o.color.z);
+        feed(f1_3, pos.y, o.position.y);
+      }
+      {
+        hlsl::float3 col; hlsl::float4 pos;
+        const float d = port::DreamShaderFn_BLVor_f1_4({x, y, z, w}, pr.randomness, me, pr.exponent, col, pos);
+        const ref::VoronoiOutput o = ref::voronoi_f1(pr, c4);
+        feed(f1_4, d, o.distance);
+        feed(f1_4, col.y, o.color.y); feed(f1_4, pos.w, o.position.w);
+      }
+
+      // smooth f1 — the 5^N window and the correction-factor accumulation
+      {
+        hlsl::float3 col; hlsl::float4 pos;
+        const float d = port::DreamShaderFn_BLVor_smooth_f1_2({x, y}, pr.randomness, me, pr.exponent,
+                                                              pr.smoothness, col, pos);
+        const ref::VoronoiOutput o = ref::voronoi_smooth_f1(pr, c2);
+        feed(sf_2, d, o.distance);
+        feed(sf_2, col.x, o.color.x); feed(sf_2, pos.x, o.position.x);
+      }
+      {
+        hlsl::float3 col; hlsl::float4 pos;
+        const float d = port::DreamShaderFn_BLVor_smooth_f1_3({x, y, z}, pr.randomness, me, pr.exponent,
+                                                              pr.smoothness, col, pos);
+        const ref::VoronoiOutput o = ref::voronoi_smooth_f1(pr, c3);
+        feed(sf_3, d, o.distance);
+        feed(sf_3, col.z, o.color.z); feed(sf_3, pos.z, o.position.z);
+      }
+
+      // f2 — the one that measures with the full metric where f1 uses the bound
+      {
+        hlsl::float3 col; hlsl::float4 pos;
+        const float d = port::DreamShaderFn_BLVor_f2_3({x, y, z}, pr.randomness, me, pr.exponent, col, pos);
+        const ref::VoronoiOutput o = ref::voronoi_f2(pr, c3);
+        feed(f2_3, d, o.distance);
+        feed(f2_3, col.x, o.color.x); feed(f2_3, pos.y, o.position.y);
+      }
+      {
+        hlsl::float3 col; hlsl::float4 pos;
+        const float d = port::DreamShaderFn_BLVor_f2_4({x, y, z, w}, pr.randomness, me, pr.exponent, col, pos);
+        const ref::VoronoiOutput o = ref::voronoi_f2(pr, c4);
+        feed(f2_4, d, o.distance);
+        feed(f2_4, col.z, o.color.z);
+      }
+
+      feed(de_2, port::DreamShaderFn_BLVor_dist_to_edge_2({x, y}, pr.randomness),
+           ref::voronoi_distance_to_edge(pr, c2));
+      feed(de_3, port::DreamShaderFn_BLVor_dist_to_edge_3({x, y, z}, pr.randomness),
+           ref::voronoi_distance_to_edge(pr, c3));
+      feed(ns_2, port::DreamShaderFn_BLVor_n_sphere_radius_2({x, y}, pr.randomness),
+           ref::voronoi_n_sphere_radius(pr, c2));
+      feed(ns_3, port::DreamShaderFn_BLVor_n_sphere_radius_3({x, y, z}, pr.randomness),
+           ref::voronoi_n_sphere_radius(pr, c3));
+
+      // The fractal wrappers, where the port had to split what upstream selects inside the loop.
+      {
+        hlsl::float3 col; hlsl::float4 pos;
+        const float d = port::DreamShaderFn_BLVor_fractal_f1_3(
+            {x, y, z}, pr.detail, pr.roughness, pr.lacunarity, pr.randomness, me, pr.exponent, 0.0f,
+            pr.max_distance, 1.0f, pr.scale, col, pos);
+        const ref::VoronoiOutput o = ref::fractal_voronoi_x_fx(pr, c3);
+        feed(fr_3, d, o.distance);
+        feed(fr_3, col.x, o.color.x); feed(fr_3, col.y, o.color.y);
+        feed(fr_3, pos.x, o.position.x); feed(fr_3, pos.z, o.position.z);
+      }
+      {
+        ref::VoronoiParams ps = pr;
+        ps.feature = ref::NODE_VORONOI_SMOOTH_F1;
+        hlsl::float3 col; hlsl::float4 pos;
+        const float d = port::DreamShaderFn_BLVor_fractal_smoothf1_2(
+            {x, y}, ps.detail, ps.roughness, ps.lacunarity, ps.randomness, me, ps.exponent,
+            ps.smoothness, ps.max_distance, 1.0f, ps.scale, col, pos);
+        const ref::VoronoiOutput o = ref::fractal_voronoi_x_fx(ps, c2);
+        feed(frs_2, d, o.distance);
+        feed(frs_2, col.y, o.color.y); feed(frs_2, pos.y, o.position.y);
+      }
+      feed(fde_3, port::DreamShaderFn_BLVor_fractal_d2e_3({x, y, z}, pr.detail, pr.roughness,
+                                                          pr.lacunarity, pr.randomness,
+                                                          pr.max_distance, 1.0f),
+           ref::fractal_voronoi_distance_to_edge(pr, c3));
+    }
+
+    report(f1_2, 4); report(f1_3, 4); report(f1_4, 4);
+    report(sf_2, 8); report(sf_3, 8);
+    report(f2_3, 4); report(f2_4, 4);
+    report(de_2, 4); report(de_3, 4);
+    report(ns_2, 4); report(ns_3, 4);
+    report(fr_3, 16); report(frs_2, 16); report(fde_3, 16);
+  }
+
+  // ---- Gabor -------------------------------------------------------------------------------------
+  //
+  // polar_to_cartesian and spherical_to_direction come from upstream's util/projection.h rather
+  // than the shim. That matters: the port derived both from the inverse operations sitting in
+  // gabor.h, and supplying them from the shim would compare that derivation against itself.
+  {
+    Rng rng;
+    Stat k2{"gabor_kernel_2d"}, k3{"gabor_kernel_3d"};
+    Stat o3{"gabor_orientation_3d"};
+    Stat n2{"gabor_noise_2d"}, n3{"gabor_noise_3d"};
+    Stat sd{"gabor_standard_deviation"};
+
+    feed(sd, port::DreamShaderFn_BLGabor_stddev_2d(), ref::compute_2d_gabor_standard_deviation());
+    feed(sd, port::DreamShaderFn_BLGabor_stddev_3d(), ref::compute_3d_gabor_standard_deviation());
+
+    for (int i = 0; i < N / 8; i++) {
+      const float px = rng.unit() * 2.0f - 1.0f;
+      const float py = rng.unit() * 2.0f - 1.0f;
+      const float pz = rng.unit() * 2.0f - 1.0f;
+      const float freq = 0.5f + rng.unit() * 8.0f;
+      const float orient = rng.unit() * 6.2831853f - 3.14159265f;
+      const float isotropy = rng.unit();
+
+      {
+        const hlsl::float2 a = port::DreamShaderFn_BLGabor_kernel_2d({px, py}, freq, orient);
+        const ref::float2 b = ref::compute_2d_gabor_kernel(ref::make_float2(px, py), freq, orient);
+        feed(k2, a.x, b.x); feed(k2, a.y, b.y);
+      }
+      {
+        const hlsl::float3 dir = hlsl::normalize(hlsl::float3(px, py, pz + 1.5f));
+        const ref::float3 rdir = ref::normalize(ref::make_float3(px, py, pz + 1.5f));
+        const hlsl::float2 a = port::DreamShaderFn_BLGabor_kernel_3d({px, py, pz}, freq, dir);
+        const ref::float2 b = ref::compute_3d_gabor_kernel(ref::make_float3(px, py, pz), freq, rdir);
+        feed(k3, a.x, b.x); feed(k3, a.y, b.y);
+
+        const hlsl::float4 seed = {px, py, pz, float(i)};
+        const hlsl::float3 ao = port::DreamShaderFn_BLGabor_orientation_3d(dir, isotropy, seed);
+        const ref::float3 bo = ref::compute_3d_orientation(
+            rdir, isotropy, ref::make_float4(px, py, pz, float(i)));
+        feed(o3, ao.x, bo.x); feed(o3, ao.y, bo.y); feed(o3, ao.z, bo.z);
+      }
+      {
+        const hlsl::float2 a = port::DreamShaderFn_BLGabor_noise_2d({px * 3.0f, py * 3.0f}, freq,
+                                                                    isotropy, orient);
+        const ref::float2 b = ref::compute_2d_gabor_noise(ref::make_float2(px * 3.0f, py * 3.0f),
+                                                          freq, isotropy, orient);
+        feed(n2, a.x, b.x); feed(n2, a.y, b.y);
+      }
+      {
+        const hlsl::float3 dir = hlsl::normalize(hlsl::float3(0.3f, -0.5f, 1.0f));
+        const ref::float3 rdir = ref::normalize(ref::make_float3(0.3f, -0.5f, 1.0f));
+        const hlsl::float2 a = port::DreamShaderFn_BLGabor_noise_3d(
+            {px * 3.0f, py * 3.0f, pz * 3.0f}, freq, isotropy, dir);
+        const ref::float2 b = ref::compute_3d_gabor_noise(
+            ref::make_float3(px * 3.0f, py * 3.0f, pz * 3.0f), freq, isotropy, rdir);
+        feed(n3, a.x, b.x); feed(n3, a.y, b.y);
+      }
+    }
+
+    report(sd, 0); report(k2, 4); report(k3, 4); report(o3, 8);
+    report(n2, 16); report(n3, 16);
   }
 
   std::printf("\n%d checks, %d mismatches\n", g_checks, g_failures);

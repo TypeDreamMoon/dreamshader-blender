@@ -187,17 +187,34 @@ negative, and deliberately sitting on cell boundaries where a sign or rounding m
 | `fbm_1d` … `fbm_4d`, normalized and not | 0 ulp |
 | Multifractal, Hetero Terrain, Hybrid, Ridged | 0 ulp |
 | `rgb_to_hsv`, `hsv_to_rgb`, `rgb_to_hsl`, `hsl_to_rgb` | 0 ulp |
+| Voronoi F1 / Smooth F1 / F2 / Distance To Edge / N-Sphere, 2D–4D, all four metrics | 0 ulp |
+| the Voronoi fractal wrappers, including the position lerp | 0 ulp |
+| Gabor 2D and 3D kernels, the spherical orientation, both noise sums | 0 ulp |
 
 Upstream is the oracle rather than a second transcription, so a wrong constant surfaces as a
 mismatch instead of being reproduced identically on both sides. The harness is mutation-tested:
 changing `0.9820` to `0.9821` in one function fails exactly the seven checks that depend on 3D
-snoise and leaves 1D, 2D, 4D and the hashes green.
+snoise and leaves 1D, 2D, 4D and the hashes green; changing Voronoi's smoothing correction from
+`3.0` to `3.5` fails exactly the three Smooth F1 checks and leaves F1, F2, Distance To Edge,
+N-Sphere and all of Gabor green.
 
-**Not yet covered:** Voronoi, Gabor, the Math and Vector Math operation tables, and the node-level
-entry points (`BL::Tex*`). Extending the harness to those needs more of the Cycles platform layer
-shimmed — the `VoronoiParams` struct, the operation enums, `spherical_to_direction`. The hashes and
-colour conversions underneath them *are* verified, which is where the arbitrary constants live.
-See [`Tests/README.md`](Tests/README.md).
+Three upstream files are compiled only in part — `util/color.h` because its tail is Cycles'
+spectral pipeline, `voronoi.h` and `gabor.h` because theirs are the SVM node entry points that read
+the bytecode stack. The cut is mechanical, by function name or at the first node function, and a
+rename upstream makes the harness throw rather than quietly compare less. What is compiled is
+upstream's text character for character.
+
+Gabor's two geometry helpers, `polar_to_cartesian` and `spherical_to_direction`, come from
+upstream's `util/projection.h` and not from the shim. That distinction is the point: the port
+derived both from the inverse operations sitting in `gabor.h`, and a shim-supplied helper would
+have compared that derivation against itself and always agreed. Taken from upstream, it agrees to
+0 ulp — the derivation was right.
+
+**Not yet covered:** the Math and Vector Math operation tables, Blackbody, Wavelength, the curve
+lookups, and the node-level entry points (`BL::Tex*`). The operation tables need their enums
+shimmed; Blackbody and Wavelength end in a colour-space matrix that has no single upstream value;
+the curve lookups have no upstream counterpart at all, because the table they read lives in
+Blender's bytecode. See [`Tests/README.md`](Tests/README.md).
 
 ### Curves and ramps are table lookups
 
