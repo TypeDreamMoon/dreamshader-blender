@@ -29,7 +29,7 @@
 
 .EXAMPLE
     pwsh -File Tests/compile-hlsl.ps1
-    pwsh -File Tests/compile-hlsl.ps1 -SearchRoot I:/UnrealProject_Moon/DEV_58/DevTest
+    pwsh -File Tests/compile-hlsl.ps1 -SearchRoot D:/Projects/MyGame
 #>
 [CmdletBinding()]
 param(
