@@ -41,34 +41,77 @@ Copy it out of `DShader/Packages` before building it — a `.dsm` inside a packa
 
 | Blender node | Entry point | State |
 | :-- | :-- | :-- |
-| Noise Texture, 1D–4D, fBM | `BL::TexNoise1D` … `BL::TexNoise4D` | ported |
-| Noise Texture, other four fractal types | — | next |
-| Voronoi, Wave, Magic, Checker, Brick, Gradient, White Noise, Gabor | — | planned |
+| Noise Texture, 1D–4D, all five fractal types | `BL::TexNoise*D`, `BL::TexNoiseTyped*D` | ported |
+| Voronoi, Wave, Magic, Checker, Brick, Gradient, White Noise, Gabor | — | next |
 | Converter / Color / Vector families | — | planned |
 | BSDF closures | — | out of scope without Substrate; see below |
 
 ### API
 
-Each entry point mirrors one dropdown state of the node. Inputs are in the node's own order,
-outputs are Fac then Color.
+Two entry points per dimension. Inputs follow the node's own socket order; outputs are Fac then
+Color.
 
 ```c
+// fBM — Blender's default type, and the common case.
 BL::TexNoise1D(in float  w,  in float scale, in float detail, in float roughness,
                in float lacunarity, in float distortion, in float normalize01,
                out float fac, out float3 color);
 BL::TexNoise2D(in float2 co, /* …same… */);
 BL::TexNoise3D(in float3 co, /* …same… */);
 BL::TexNoise4D(in float3 co, in float w, /* …same… */);
+
+// The full node, including the Type dropdown and the Offset / Gain it enables.
+BL::TexNoiseTyped3D(in float3 co, in float scale, in float detail, in float roughness,
+                    in float lacunarity, in float offset, in float gain, in float distortion,
+                    in float type, in float normalize01,
+                    out float fac, out float3 color);
 ```
 
+`type` is this package's own encoding, ordered to put Blender's default at zero:
+
+| 0 | 1 | 2 | 3 | 4 |
+| :-- | :-- | :-- | :-- | :-- |
+| fBM | Multifractal | Hybrid Multifractal | Ridged Multifractal | Hetero Terrain |
+
 `normalize01` is Blender's Normalize checkbox as `0.0` / `1.0` — the language has no bool-valued
-function input, and a float lets it come from a scalar parameter or a static switch.
+function input, and a float lets it come from a scalar parameter or a static switch. Blender
+applies Normalize to fBM only, and so does this package.
+
+`offset` is used by Hetero Terrain, Hybrid and Ridged; `gain` by Hybrid and Ridged. The fBM
+shorthand does not expose either, because fBM ignores both.
+
+### Shader compile cost
+
+**Pass `type` as a literal, or from a static switch — not as a `ScalarParameter` — unless you
+genuinely need to animate it.** A constant type lets the translator fold the dispatcher and drop
+four of the five fractal paths, which costs the same as calling the fBM shorthand directly. A
+dynamic type compiles all five. Measured with `fxc /T ps_5_0` over this library:
+
+| call | ps_5_0 |
+| :-- | --: |
+| `TexNoise3D` (fBM shorthand) | 0.6 s |
+| `TexNoiseTyped3D`, literal type | 0.6 s |
+| `TexNoiseTyped3D`, dynamic type | 9.1 s |
+| `TexNoise4D` (fBM shorthand) | 3.8 s |
+| `TexNoiseTyped4D`, dynamic type | 80.5 s |
+
+The cliff is SM5-specific: DXBC has no function calls, so fxc inlines the whole call tree, and 4D
+Perlin is sixteen hashes per octave before the dispatcher multiplies it by five. `dxc -T ps_6_0`
+compiles every entry point above, together, in about ten seconds.
 
 ## Parity
 
 Faithful to Cycles, deliberately, including the parts that look like noise in the source:
 
 - The Jenkins lookup3 hash, bit for bit. Everything downstream depends on it.
+- fBM accumulates a separate `fscale`; the other four multiply the coordinate in place. Those are
+  not interchangeable — repeated multiplication and one scaled multiply round differently — so
+  each is written the way upstream writes it.
+- Ridged Multifractal has no fractional-detail tail upstream: it ignores the remainder that the
+  other four blend in. Kept.
+- Hybrid Multifractal's `weight > 0.001` test is part of the loop condition, not a late-out, and
+  the fractional tail is gated on the same test.
+- Hetero Terrain and Ridged start their loop at `i = 1`, having already taken one unscaled octave.
 - `uint_to_float_incl`'s divisor is `2^32`, not `2^32 - 1` — upstream's `(float)0xFFFFFFFFu`
   rounds up, and matching the rounding matters more than matching the literal.
 - The OSL noise scale constants (`0.25`, `0.6616`, `0.9820`, `0.8344`). They were measured, not
@@ -127,8 +170,8 @@ match. Internals are therefore top-level `BLHash_*` / `BLNoise_*`; only entry po
 ## Testing
 
 `dsc compile` proves the source parses and the graph builds. It does **not** prove the generated
-HLSL compiles — the commandlet runs with `-nullrhi`. Both defects found in the first port were
-invisible to it. Always run both:
+HLSL compiles — the commandlet runs with `-nullrhi`. Every defect found so far was invisible to
+it. Always run both; the pair takes well under a minute:
 
 ```bash
 pwsh -File Plugins/DreamShader/.skill/dsc.ps1 compile DShader/Materials/Blender/M_BL_TexNoise_Parity.dsm -Force

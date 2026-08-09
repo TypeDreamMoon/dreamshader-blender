@@ -1,12 +1,12 @@
 // Compile gate for @typedreammoon/dreamshader-blender.
 //
-// This lives in the project tree rather than the package's Examples/ folder on purpose: a .dsm
-// under DShader/Packages is never compiled by any path, so an example there proves nothing.
-// This one is built by `compile -All` and by the commandlet.
+// A .dsm under DShader/Packages is never compiled by any path, so this file proves nothing where
+// it sits. Copy it into the consuming project's own tree — DShader/Materials/Blender/ by
+// convention — and build that copy.
 //
-// All four dimensions are wired into the output with non-zero weights so none of them can be
-// dead-code eliminated — the point is to typecheck and compile every entry point, not to look
-// like anything in particular.
+// Every public entry point is wired into the output with a non-zero weight so none can be dead-
+// code eliminated. `NoiseType` is a parameter rather than a literal on purpose: a dynamic type
+// forces all five fractal paths through the shader compiler, which is the point of a gate.
 
 import "@typedreammoon/dreamshader-blender/Library/Noise.dsh";
 
@@ -25,15 +25,29 @@ Shader(Name = "Blender/M_BL_TexNoise_Parity")
         ScalarParameter Lacunarity = 2.0 [
             Group="Noise Texture | Inputs"; SortPriority=40;
         ];
-        ScalarParameter Distortion = 0.0 [
+        ScalarParameter Offset = 0.0 [
             Group="Noise Texture | Inputs"; SortPriority=50;
+            Description="Hetero Terrain, Hybrid and Ridged only";
+        ];
+        ScalarParameter Gain = 1.0 [
+            Group="Noise Texture | Inputs"; SortPriority=60;
+            Description="Hybrid and Ridged only";
+        ];
+        ScalarParameter Distortion = 0.0 [
+            Group="Noise Texture | Inputs"; SortPriority=70;
         ];
         ScalarParameter WCoord = 0.0 [
-            Group="Noise Texture | Inputs"; SortPriority=60;
-            Description="The 4D variant's W input";
+            Group="Noise Texture | Inputs"; SortPriority=80;
+            Description="The 4D variants' W input";
         ];
+        ScalarParameter NoiseType = 0.0 [
+            Group="Noise Texture | Options"; SortPriority=90;
+            Description="0 fBM, 1 Multifractal, 2 Hybrid, 3 Ridged, 4 Hetero Terrain";
+        ];
+        // Not named `Normalize`: the 19 math builtins shadow same-named properties inside a
+        // Graph block, silently. `normalize` is one of them.
         ScalarParameter NormalizeOutput = 1.0 [
-            Group="Noise Texture | Options"; SortPriority=70;
+            Group="Noise Texture | Options"; SortPriority=100;
         ];
     }
 
@@ -51,6 +65,7 @@ Shader(Name = "Blender/M_BL_TexNoise_Parity")
         float2 uv = UE.TexCoord(Index=0);
         float3 p = float3(uv.x, uv.y, 0.0);
 
+        // fBM shorthand, all four dimensions.
         BL::TexNoise1D(uv.x, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput,
                        Fac1, Color1);
         BL::TexNoise2D(uv, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput,
@@ -60,7 +75,20 @@ Shader(Name = "Blender/M_BL_TexNoise_Parity")
         BL::TexNoise4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, Distortion,
                        NormalizeOutput, Fac4, Color4);
 
-        float3 bands = float3(Fac1, Fac2, Fac4);
-        EmissiveColor = bands * 0.5 + Color3 * 0.5;
+        // Full node, all four dimensions, dynamic type.
+        BL::TexNoiseTyped1D(uv.x, Scale, Detail, Roughness, Lacunarity, Offset, Gain, Distortion,
+                            NoiseType, NormalizeOutput, Fac5, Color5);
+        BL::TexNoiseTyped2D(uv, Scale, Detail, Roughness, Lacunarity, Offset, Gain, Distortion,
+                            NoiseType, NormalizeOutput, Fac6, Color6);
+        BL::TexNoiseTyped3D(p, Scale, Detail, Roughness, Lacunarity, Offset, Gain, Distortion,
+                            NoiseType, NormalizeOutput, Fac7, Color7);
+        BL::TexNoiseTyped4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, Offset, Gain,
+                            Distortion, NoiseType, NormalizeOutput, Fac8, Color8);
+
+        float3 fbmBands = float3(Fac1, Fac2, Fac4);
+        float3 typedBands = float3(Fac5, Fac6, Fac8);
+        float3 colors = Color3 + Color7 + Color1 + Color2 + Color4 + Color5 + Color6 + Color8;
+
+        EmissiveColor = (fbmBands + typedBands + colors + float3(Fac3, Fac7, Fac3)) * 0.05;
     }
 }

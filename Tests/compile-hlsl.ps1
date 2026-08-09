@@ -21,6 +21,12 @@
 .PARAMETER Marker
     Symbol that identifies the right include when searching. Defaults to the 3D noise entry point.
 
+.PARAMETER Thorough
+    Also run the SM5 pass over the full union entry point. Correct, and slow — fxc has no function
+    calls in DXBC, so it inlines the whole library into one shader. Measured on this library:
+    80 s for the 4D typed variant alone with a dynamic type, versus 10 s for dxc over everything.
+    The default passes cover the same code at a fraction of that.
+
 .EXAMPLE
     pwsh -File Tests/compile-hlsl.ps1
     pwsh -File Tests/compile-hlsl.ps1 -SearchRoot I:/UnrealProject_Moon/DEV_58/DevTest
@@ -30,6 +36,7 @@ param(
     [string] $Ush,
     [string] $SearchRoot,
     [string] $Marker = 'DreamShaderFn_BL_TexNoise3D',
+    [switch] $Thorough,
     [switch] $KeepTemp
 )
 
@@ -112,18 +119,43 @@ try {
 
     $failed = $false
 
-    if ($fxc) {
-        Write-Host "fxc     : $fxc"
-        & $fxc /nologo /T ps_5_0 /E MainPS $entry /Fo (Join-Path $temp 'sm5.cso')
-        if ($LASTEXITCODE -ne 0) { $failed = $true; Write-Host 'ps_5_0  : FAILED' -ForegroundColor Red }
-        else { Write-Host 'ps_5_0  : ok' -ForegroundColor Green }
+    function Invoke-Case {
+        param([string] $Tool, [string] $Label, [string[]] $ToolArgs)
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        & $Tool @ToolArgs
+        $sw.Stop()
+        $secs = '{0,6:N1}s' -f $sw.Elapsed.TotalSeconds
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host ("{0,-28} {1}  FAILED" -f $Label, $secs) -ForegroundColor Red
+            return $false
+        }
+        Write-Host ("{0,-28} {1}  ok" -f $Label, $secs) -ForegroundColor Green
+        return $true
     }
 
+    # SM6 first: dxc keeps real function calls in DXIL, so one pass over every entry point is both
+    # the broadest coverage available and the cheapest thing here.
     if ($dxc) {
         Write-Host "dxc     : $dxc"
-        & $dxc -nologo -T ps_6_0 -E MainPS $entry -Fo (Join-Path $temp 'sm6.cso')
-        if ($LASTEXITCODE -ne 0) { $failed = $true; Write-Host 'ps_6_0  : FAILED' -ForegroundColor Red }
-        else { Write-Host 'ps_6_0  : ok' -ForegroundColor Green }
+        if (-not (Invoke-Case $dxc 'ps_6_0 all entry points' @(
+            '-nologo', '-T', 'ps_6_0', '-E', 'MainPS', $entry, '-Fo', (Join-Path $temp 'sm6.cso')))) {
+            $failed = $true
+        }
+    }
+
+    # SM5 is split by entry point. fxc inlines everything, so the union is quadratic-feeling while
+    # these two together still reach every function in the library.
+    if ($fxc) {
+        Write-Host "fxc     : $fxc"
+        $sm5 = @('EP_Fbm4D', 'EP_Typed3D_Dynamic')
+        if ($Thorough) { $sm5 += 'MainPS' }
+
+        foreach ($ep in $sm5) {
+            if (-not (Invoke-Case $fxc "ps_5_0 $ep" @(
+                '/nologo', '/T', 'ps_5_0', '/E', $ep, $entry, '/Fo', (Join-Path $temp "sm5_$ep.cso")))) {
+                $failed = $true
+            }
+        }
     }
 
     if ($failed) { exit 1 }
