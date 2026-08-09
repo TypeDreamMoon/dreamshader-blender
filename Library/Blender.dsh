@@ -15,3 +15,4 @@ import "Magic.dsh";
 import "Wave.dsh";
 import "Brick.dsh";
 import "Voronoi.dsh";
+import "Gabor.dsh";

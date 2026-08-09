@@ -183,3 +183,16 @@ float4 EP_Voronoi1D(float2 uv : TEXCOORD0, float3 knobs : TEXCOORD1) : SV_Target
     float v5 = DreamShaderFn_BL_TexVoronoiRadius_1D(uv.x, 5.0, 1.0);
     return float4(vc1 + vp1 + vc2 + vp2 + vc3 + vp3, v1 + v2 + v3 + v4 + v5 + vw1 + vw2 + vw3);
 }
+
+// SM5 pass: Gabor. 27 cells x 8 impulses in 3D, kept as real loops rather than unrolled.
+float4 EP_Gabor(float2 uv : TEXCOORD0, float3 knobs : TEXCOORD1) : SV_Target
+{
+    float3 p = float3(uv, 0.0);
+    float3 dir = float3(knobs.x, knobs.y, 1.0);
+
+    float ph2, in2, ph3, in3;
+    float v2 = DreamShaderFn_BL_TexGabor2D(p, 5.0, 2.0, knobs.z, 0.7853982, ph2, in2);
+    float v3 = DreamShaderFn_BL_TexGabor3D(p, 5.0, 2.0, knobs.z, dir, ph3, in3);
+
+    return float4(v2, ph2 + in2, v3, ph3 + in3);
+}

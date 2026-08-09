@@ -63,6 +63,11 @@ The upstream licence of each ported file, as declared by its own SPDX header:
       Smooth Voronoi and Distance To Edge both derive from that MIT section.
       -> Library/Voronoi.dsh
 
+  intern/cycles/kernel/svm/gabor.h
+      SPDX-FileCopyrightText: 2024 Blender Foundation
+      SPDX-License-Identifier: Apache-2.0
+      -> Library/Gabor.dsh
+
 --------------------------------------------------------------------------------
 BSD-3-Clause (Open Shading Language derived code)
 --------------------------------------------------------------------------------
@@ -94,7 +99,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
-MIT (referenced by upstream, for files not yet ported)
+MIT (Inigo Quilez, via intern/cycles/kernel/svm/voronoi.h)
 --------------------------------------------------------------------------------
 
 Library/Voronoi.dsh derives in part from MIT-licensed code originally

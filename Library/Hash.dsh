@@ -269,3 +269,19 @@ Function BLHash_float4_to_float3(in float4 k, out float3 result)
     float c = BLHash_float4_to_float(float4(k.w, k.z, k.y, k.x));
     result = float3(a, b, c);
 }
+
+// Hashing a floatN into a float2 of components in [0, 1]. Same arbitrary-looking component
+// recipes, same reason.
+Function BLHash_float3_to_float2(in float3 k, out float2 result)
+{
+    float a = BLHash_float3_to_float(k);
+    float b = BLHash_float3_to_float(float3(k.z, k.x, k.y));
+    result = float2(a, b);
+}
+
+Function BLHash_float4_to_float2(in float4 k, out float2 result)
+{
+    float a = BLHash_float4_to_float(k);
+    float b = BLHash_float4_to_float(float4(k.z, k.x, k.w, k.y));
+    result = float2(a, b);
+}

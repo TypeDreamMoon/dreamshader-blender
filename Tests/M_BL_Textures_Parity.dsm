@@ -75,6 +75,15 @@ Shader(Name = "Blender/M_BL_Textures_Parity")
         ScalarParameter VorExponent = 0.5 [
             Group="Voronoi | Inputs"; SortPriority=180;
         ];
+        ScalarParameter GaborFrequency = 2.0 [
+            Group="Gabor | Inputs"; SortPriority=200;
+        ];
+        ScalarParameter GaborAnisotropy = 1.0 [
+            Group="Gabor | Inputs"; SortPriority=210;
+        ];
+        ScalarParameter GaborOrientation = 0.7853982 [
+            Group="Gabor | Inputs"; SortPriority=220;
+        ];
         ScalarParameter VorMetric = 0.0 [
             Group="Voronoi | Options"; SortPriority=190;
             Description="0 Euclidean, 1 Manhattan, 2 Chebychev, 3 Minkowski";
@@ -217,6 +226,14 @@ Shader(Name = "Blender/M_BL_Textures_Parity")
         VAcc = VAcc + VD19;
         BL::TexVoronoiRadius_4D(p, WCoord, Scale, VorRandomness, VD20);
         VAcc = VAcc + VD20;
+
+        // Gabor, both types.
+        float3 gaborDir = float3(0.0, 0.0, 1.0);
+        BL::TexGabor2D(p, Scale, GaborFrequency, GaborAnisotropy, GaborOrientation,
+                       GbV2, GbP2, GbI2);
+        BL::TexGabor3D(p, Scale, GaborFrequency, GaborAnisotropy, gaborDir,
+                       GbV3, GbP3, GbI3);
+        VAcc = VAcc + GbV2 + GbP2 + GbI2 + GbV3 + GbP3 + GbI3;
 
         float3 noiseFacs = float3(NFac1, NFac2, NFac4);
         float3 typedFacs = float3(TFac1, TFac2, TFac4);

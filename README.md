@@ -49,8 +49,9 @@ Copy it out of `DShader/Packages` before building it — a `.dsm` inside a packa
 | Wave Texture, bands/rings × 4 directions × 3 profiles | `BL::TexWave` | `Wave.dsh` | ported |
 | Brick Texture | `BL::TexBrick` | `Brick.dsh` | ported |
 | Voronoi Texture, all 5 features × 4 dimensions × 4 metrics | `BL::TexVoronoi*_*D` | `Voronoi.dsh` | ported |
-| Gabor Texture | — | — | next |
-| Converter / Color / Vector families | — | — | planned |
+| Gabor Texture, 2D and 3D | `BL::TexGabor2D`, `BL::TexGabor3D` | `Gabor.dsh` | ported |
+| Converter / Color / Vector families | — | — | next |
+| Input family (Texture Coordinate, Geometry, Attribute…) | — | — | blocked on the coordinate-space mapping |
 | BSDF closures | — | — | out of scope without Substrate; see below |
 
 Import a single header when you only need one family — the closure is inlined as text, so a
@@ -90,6 +91,28 @@ applies Normalize to fBM only, and so does this package.
 `offset` is used by Hetero Terrain, Hybrid and Ridged; `gain` by Hybrid and Ridged. The fBM
 shorthand does not expose either, because fBM ignores both.
 
+Voronoi is one entry point per Feature per dimension — twenty in all — rather than one entry with
+a Feature selector:
+
+```c
+BL::TexVoronoiF1_3D(in float3 co, in float scale, in float detail, in float roughness,
+                    in float lacunarity, in float randomness, in float metric, in float exponent,
+                    in float normalize01,
+                    out float outDistance, out float3 outColor, out float3 outPosition,
+                    out float outW);
+BL::TexVoronoiSmoothF1_3D(…, in float smoothness, …);   // smoothness after lacunarity
+BL::TexVoronoiF2_3D(…);                                  // same as F1
+BL::TexVoronoiDistToEdge_3D(co, scale, detail, roughness, lacunarity, randomness, normalize01,
+                            out outDistance);            // no metric
+BL::TexVoronoiRadius_3D(co, scale, randomness, out outRadius);   // not fractalised
+```
+
+`metric`: 0 Euclidean, 1 Manhattan, 2 Chebychev, 3 Minkowski — ignored by Distance To Edge,
+N-Sphere Radius and every 1D entry, exactly as in Blender. There is no runtime Feature selector on
+purpose: Smooth F1 scans a 5^N cell window against F1's 3^N — 625 cells per octave in 4D — so one
+dispatching entry point would compile all of that into every material that uses any feature. Use a
+`StaticSwitchParameter` if you need to choose in a material instance.
+
 ### Shader compile cost
 
 **Pass `type` as a literal, or from a static switch — not as a `ScalarParameter` — unless you
@@ -108,6 +131,11 @@ dynamic type compiles all five. Measured with `fxc /T ps_5_0` over this library:
 The cliff is SM5-specific: DXBC has no function calls, so fxc inlines the whole call tree, and 4D
 Perlin is sixteen hashes per octave before the dispatcher multiplies it by five. `dxc -T ps_6_0`
 compiles every entry point above, together, in about ten seconds.
+
+Voronoi and Gabor avoid the cliff entirely — 0.1–0.4 s each on both compilers — because their cell
+windows carry `[loop]`. The bounds are compile-time constants, so fxc would otherwise unroll 625
+cells (Smooth F1 in 4D) or 216 kernel evaluations (Gabor 3D), each copy dragging its own hash
+along. The attribute changes no arithmetic.
 
 ## Parity
 
