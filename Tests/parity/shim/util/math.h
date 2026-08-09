@@ -61,6 +61,17 @@ ccl_device_inline float2 mask(const bool2 m, const float2 v) { return {m.x ? v.x
 ccl_device_inline float3 mask(const bool3 m, const float3 v) { return {m.x ? v.x : 0.0f, m.y ? v.y : 0.0f, m.z ? v.z : 0.0f}; }
 ccl_device_inline float4 mask(const bool4 m, const float4 v) { return {m.x ? v.x : 0.0f, m.y ? v.y : 0.0f, m.z ? v.z : 0.0f, m.w ? v.w : 0.0f}; }
 
+// util/color.h's tail (xyY, spectrum) needs these. Spectrum is float3 in a non-spectral build.
+using Spectrum = float3;
+ccl_device_inline float sqr(const float a) { return a * a; }
+ccl_device_inline float3 sqr(const float3 a) { return {a.x * a.x, a.y * a.y, a.z * a.z}; }
+ccl_device_inline float2 operator/(const float2 a, const float s) { return {a.x / s, a.y / s}; }
+ccl_device_inline float3 operator/(const float3 a, const float s) { return {a.x / s, a.y / s, a.z / s}; }
+ccl_device_inline float4 operator/(const float4 a, const float s) { return {a.x / s, a.y / s, a.z / s, a.w / s}; }
+ccl_device_inline float3 operator/(const float3 a, const float3 b) { return {a.x / b.x, a.y / b.y, a.z / b.z}; }
+ccl_device_inline float3 operator-(const float3 a) { return {-a.x, -a.y, -a.z}; }
+ccl_device_inline float3 operator-(const float3 a, const float s) { return {a.x - s, a.y - s, a.z - s}; }
+
 ccl_device_inline float dot(const float2 a, const float2 b) { return a.x * b.x + a.y * b.y; }
 ccl_device_inline float dot(const float3 a, const float3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 ccl_device_inline float dot(const float4 a, const float4 b) { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; }

@@ -16,3 +16,7 @@ import "Wave.dsh";
 import "Brick.dsh";
 import "Voronoi.dsh";
 import "Gabor.dsh";
+import "Math.dsh";
+import "Color.dsh";
+import "Vector.dsh";
+import "Space.dsh";

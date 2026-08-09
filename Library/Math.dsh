@@ -1,0 +1,369 @@
+// Blender's Math and Vector Math nodes, plus Clamp and Map Range.
+//
+// Sources: intern/cycles/kernel/svm/math_util.h, map_range.h, clamp.h and the safe_* helpers in
+// util/math_base.h, util/math_float3.h — all Apache-2.0. See NOTICE.
+//
+// The `operation` inputs are floats carrying this package's own encoding, listed below in the
+// order Blender's dropdown lists them. Pass a literal: the compiler then folds the chain down to
+// the one branch you asked for. A ScalarParameter compiles all forty.
+
+import "Hash.dsh";
+
+// ---------------------------------------------------------------------------------------------
+// safe_* helpers
+//
+// Blender's Math node never produces NaN or Inf from a legal socket value — every operation that
+// could is guarded. These guards are the node's observable behaviour, not defensive padding, so
+// they are ported as written.
+// ---------------------------------------------------------------------------------------------
+
+Function BLMath_safe_divide(in float a, in float b, out float result)
+{
+    result = (b != 0.0) ? (a / b) : 0.0;
+}
+
+Function BLMath_safe_powf(in float a, in float b, out float result)
+{
+    // A negative base with a fractional exponent has no real value; upstream returns zero rather
+    // than NaN.
+    result = (a < 0.0 && b != trunc(b)) ? 0.0 : pow(a, b);
+}
+
+Function BLMath_safe_logf(in float a, in float b, out float result)
+{
+    if (a <= 0.0 || b <= 0.0) {
+        result = 0.0;
+    }
+    else {
+        float la = log(a);
+        float lb = log(b);
+        result = (lb != 0.0) ? (la / lb) : 0.0;
+    }
+}
+
+Function BLMath_inversesqrtf(in float f, out float result)
+{
+    result = (f > 0.0) ? (1.0 / sqrt(f)) : 0.0;
+}
+
+Function BLMath_compatible_signf(in float f, out float result)
+{
+    result = (f == 0.0) ? 0.0 : ((f < 0.0) ? -1.0 : 1.0);
+}
+
+Function BLMath_compatible_atan2(in float y, in float x, out float result)
+{
+    result = (x == 0.0 && y == 0.0) ? 0.0 : atan2(y, x);
+}
+
+Function BLMath_safe_modulo(in float a, in float b, out float result)
+{
+    result = (b != 0.0) ? fmod(a, b) : 0.0;
+}
+
+Function BLMath_safe_floored_modulo(in float a, in float b, out float result)
+{
+    result = (b != 0.0) ? (a - floor(a / b) * b) : 0.0;
+}
+
+Function BLMath_wrapf(in float value, in float upper, in float lower, out float result)
+{
+    float range = upper - lower;
+    result = (range != 0.0) ? (value - range * floor((value - lower) / range)) : lower;
+}
+
+Function BLMath_pingpongf(in float a, in float b, out float result)
+{
+    result = (b != 0.0) ? abs(frac((a - b) / (b * 2.0)) * b * 2.0 - b) : 0.0;
+}
+
+Function BLMath_smoothminf(in float a, in float b, in float k, out float result)
+{
+    if (k != 0.0) {
+        float h = max(k - abs(a - b), 0.0) / k;
+        result = min(a, b) - h * h * h * k * (1.0 / 6.0);
+    }
+    else {
+        result = min(a, b);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Math node
+//
+//   0 Add            1 Subtract       2 Multiply       3 Divide        4 Multiply Add
+//   5 Power          6 Logarithm      7 Square Root    8 Inverse Sqrt  9 Absolute
+//  10 Exponent      11 Minimum       12 Maximum       13 Less Than    14 Greater Than
+//  15 Sign          16 Compare       17 Smooth Min    18 Smooth Max   19 Round
+//  20 Floor         21 Ceil          22 Truncate      23 Fraction     24 Modulo
+//  25 Floored Mod   26 Wrap          27 Snap          28 Ping-Pong    29 Sine
+//  30 Cosine        31 Tangent       32 Arcsine       33 Arccosine    34 Arctangent
+//  35 Arctan2       36 Sinh          37 Cosh          38 Tanh         39 To Radians
+//  40 To Degrees
+//
+// `c` is Blender's third socket — Addend for Multiply Add, Epsilon for Compare, Distance for the
+// smooth min/max, Max for Wrap. Unused by everything else.
+// ---------------------------------------------------------------------------------------------
+
+Function BLMath_op(in float operation, in float a, in float b, in float c, out float result)
+{
+    int op = int(operation);
+
+    if (op == 0)       { result = a + b; }
+    else if (op == 1)  { result = a - b; }
+    else if (op == 2)  { result = a * b; }
+    else if (op == 3)  { result = BLMath_safe_divide(a, b); }
+    else if (op == 4)  { result = a * b + c; }
+    else if (op == 5)  { result = BLMath_safe_powf(a, b); }
+    else if (op == 6)  { result = BLMath_safe_logf(a, b); }
+    else if (op == 7)  { result = sqrt(max(a, 0.0)); }
+    else if (op == 8)  { result = BLMath_inversesqrtf(a); }
+    else if (op == 9)  { result = abs(a); }
+    else if (op == 10) { result = exp(a); }
+    else if (op == 11) { result = min(a, b); }
+    else if (op == 12) { result = max(a, b); }
+    else if (op == 13) { result = (a < b) ? 1.0 : 0.0; }
+    else if (op == 14) { result = (a > b) ? 1.0 : 0.0; }
+    else if (op == 15) { result = BLMath_compatible_signf(a); }
+    else if (op == 16) {
+        // FLT_EPSILON is the floor on the tolerance, so Compare with epsilon 0 still matches
+        // exactly-equal inputs rather than never matching.
+        result = ((a == b) || (abs(a - b) <= max(c, 1.192092896e-07))) ? 1.0 : 0.0;
+    }
+    else if (op == 17) { result = BLMath_smoothminf(a, b, c); }
+    else if (op == 18) { float sm = BLMath_smoothminf(-a, -b, c); result = -sm; }
+    else if (op == 19) { result = floor(a + 0.5); }
+    else if (op == 20) { result = floor(a); }
+    else if (op == 21) { result = ceil(a); }
+    else if (op == 22) { result = (a >= 0.0) ? floor(a) : ceil(a); }
+    else if (op == 23) { result = a - floor(a); }
+    else if (op == 24) { result = BLMath_safe_modulo(a, b); }
+    else if (op == 25) { result = BLMath_safe_floored_modulo(a, b); }
+    else if (op == 26) { result = BLMath_wrapf(a, b, c); }
+    else if (op == 27) { float sd = BLMath_safe_divide(a, b); result = floor(sd) * b; }
+    else if (op == 28) { result = BLMath_pingpongf(a, b); }
+    else if (op == 29) { result = sin(a); }
+    else if (op == 30) { result = cos(a); }
+    else if (op == 31) { result = tan(a); }
+    else if (op == 32) { result = asin(clamp(a, -1.0, 1.0)); }
+    else if (op == 33) { result = acos(clamp(a, -1.0, 1.0)); }
+    else if (op == 34) { result = atan(a); }
+    else if (op == 35) { result = BLMath_compatible_atan2(a, b); }
+    else if (op == 36) { result = sinh(a); }
+    else if (op == 37) { result = cosh(a); }
+    else if (op == 38) { result = tanh(a); }
+    else if (op == 39) { result = a * (3.14159265358979324 / 180.0); }
+    else if (op == 40) { result = a * (180.0 / 3.14159265358979324); }
+    else               { result = 0.0; }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Vector Math node
+//
+//   0 Add            1 Subtract       2 Multiply       3 Divide        4 Multiply Add
+//   5 Cross Product  6 Project        7 Reflect        8 Refract       9 Faceforward
+//  10 Dot Product   11 Distance      12 Length        13 Scale        14 Normalize
+//  15 Absolute      16 Minimum       17 Maximum       18 Floor        19 Ceil
+//  20 Fraction      21 Modulo        22 Wrap          23 Snap         24 Sine
+//  25 Cosine        26 Tangent
+//
+// Dot Product, Distance and Length write `outValue`; everything else writes `outVector`. Both are
+// always produced, as they are on the node.
+// ---------------------------------------------------------------------------------------------
+
+Function BLMath_safe_divide3(in float3 a, in float3 b, out float3 result)
+{
+    result = float3((b.x != 0.0) ? a.x / b.x : 0.0,
+                    (b.y != 0.0) ? a.y / b.y : 0.0,
+                    (b.z != 0.0) ? a.z / b.z : 0.0);
+}
+
+Function BLMath_safe_normalize3(in float3 a, out float3 result)
+{
+    float t = length(a);
+    result = (t != 0.0) ? (a * (1.0 / t)) : a;
+}
+
+Function BLMath_safe_fmod3(in float3 a, in float3 b, out float3 result)
+{
+    result = float3((b.x != 0.0) ? fmod(a.x, b.x) : 0.0,
+                    (b.y != 0.0) ? fmod(a.y, b.y) : 0.0,
+                    (b.z != 0.0) ? fmod(a.z, b.z) : 0.0);
+}
+
+Function BLMath_wrap3(in float3 value, in float3 upper, in float3 lower, out float3 result)
+{
+    float3 d = value - lower;
+    float3 r = upper - lower;
+    // safe_floored_fmod, component-wise
+    float wx = (r.x != 0.0) ? (d.x - floor(d.x / r.x) * r.x) : 0.0;
+    float wy = (r.y != 0.0) ? (d.y - floor(d.y / r.y) * r.y) : 0.0;
+    float wz = (r.z != 0.0) ? (d.z - floor(d.z / r.z) * r.z) : 0.0;
+    result = float3(wx, wy, wz) + lower;
+}
+
+Function BLMath_vector_op(in float operation, in float3 a, in float3 b, in float3 c,
+                        in float param1, out float outValue, out float3 outVector)
+{
+    int op = int(operation);
+    outValue = 0.0;
+    outVector = float3(0.0, 0.0, 0.0);
+
+    if (op == 0)       { outVector = a + b; }
+    else if (op == 1)  { outVector = a - b; }
+    else if (op == 2)  { outVector = a * b; }
+    else if (op == 3)  { outVector = BLMath_safe_divide3(a, b); }
+    else if (op == 4)  { outVector = a * b + c; }
+    else if (op == 5)  { outVector = cross(a, b); }
+    else if (op == 6) {
+        float lsq = dot(b, b);
+        outVector = (lsq != 0.0) ? ((dot(a, b) / lsq) * b) : float3(0.0, 0.0, 0.0);
+    }
+    else if (op == 7) {
+        float3 n = BLMath_safe_normalize3(b);
+        outVector = a - 2.0 * n * dot(a, n);
+    }
+    else if (op == 8) {
+        float3 n = BLMath_safe_normalize3(b);
+        float eta = param1;
+        float ni = dot(n, a);
+        float k = 1.0 - eta * eta * (1.0 - ni * ni);
+        outVector = (k < 0.0) ? float3(0.0, 0.0, 0.0)
+                              : (eta * a - (eta * ni + sqrt(k)) * n);
+    }
+    else if (op == 9)  { outVector = (dot(c, b) < 0.0) ? a : (-a); }
+    else if (op == 10) { outValue = dot(a, b); }
+    else if (op == 11) { outValue = length(a - b); }
+    else if (op == 12) { outValue = length(a); }
+    else if (op == 13) { outVector = a * param1; }
+    else if (op == 14) { outVector = BLMath_safe_normalize3(a); }
+    else if (op == 15) { outVector = abs(a); }
+    else if (op == 16) { outVector = min(a, b); }
+    else if (op == 17) { outVector = max(a, b); }
+    else if (op == 18) { outVector = floor(a); }
+    else if (op == 19) { outVector = ceil(a); }
+    else if (op == 20) { outVector = a - floor(a); }
+    else if (op == 21) { outVector = BLMath_safe_fmod3(a, b); }
+    else if (op == 22) { outVector = BLMath_wrap3(a, b, c); }
+    else if (op == 23) { float3 sd = BLMath_safe_divide3(a, b); outVector = floor(sd) * b; }
+    else if (op == 24) { outVector = sin(a); }
+    else if (op == 25) { outVector = cos(a); }
+    else if (op == 26) { outVector = tan(a); }
+    // Round, Sign and Power are on the node too; they are folded into the arithmetic above
+    // exactly as upstream folds them:
+    else if (op == 27) { outVector = floor(a + 0.5); }
+    else if (op == 28) {
+        outVector = float3(BLMath_compatible_signf(a.x),
+                           BLMath_compatible_signf(a.y),
+                           BLMath_compatible_signf(a.z));
+    }
+    else if (op == 29) {
+        outVector = float3(BLMath_safe_powf(a.x, b.x),
+                           BLMath_safe_powf(a.y, b.y),
+                           BLMath_safe_powf(a.z, b.z));
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Map Range and Clamp
+//
+// Map Range `interpolation`: 0 Linear | 1 Stepped Linear | 2 Smooth Step | 3 Smoother Step
+// Clamp `type`: 0 Min Max | 1 Range. Range swaps the bounds when they arrive inverted; Min Max
+// does not, which is the whole difference between them.
+// ---------------------------------------------------------------------------------------------
+
+Function BLMath_smootherstep(in float edge0, in float edge1, in float x, out float result)
+{
+    float d = edge1 - edge0;
+    float t = clamp((d != 0.0) ? ((x - edge0) / d) : 0.0, 0.0, 1.0);
+    result = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+Function BLMath_map_range(in float value, in float fromMin, in float fromMax, in float toMin,
+                        in float toMax, in float steps, in float interpolation,
+                        in float doClamp, out float result)
+{
+    if (fromMax == fromMin) {
+        // Upstream returns zero rather than dividing — not the clamped endpoint.
+        result = 0.0;
+    }
+    else {
+        int mode = int(interpolation);
+        float factor = value;
+
+        if (mode == 1) {
+            factor = (value - fromMin) / (fromMax - fromMin);
+            factor = (steps > 0.0) ? (floor(factor * (steps + 1.0)) / steps) : 0.0;
+        }
+        else if (mode == 2) {
+            factor = (fromMin > fromMax) ? (1.0 - smoothstep(fromMax, fromMin, factor))
+                                         : smoothstep(fromMin, fromMax, factor);
+        }
+        else if (mode == 3) {
+            if (fromMin > fromMax) {
+                float s = BLMath_smootherstep(fromMax, fromMin, factor);
+                factor = 1.0 - s;
+            }
+            else {
+                factor = BLMath_smootherstep(fromMin, fromMax, factor);
+            }
+        }
+        else {
+            factor = (value - fromMin) / (fromMax - fromMin);
+        }
+
+        float mapped = toMin + factor * (toMax - toMin);
+
+        // Blender clamps to the *to* range, swapping when it is inverted, and the checkbox is
+        // ignored for the two smooth interpolations because they already clamp the factor.
+        if (doClamp != 0.0 && mode != 2 && mode != 3) {
+            mapped = (toMin > toMax) ? clamp(mapped, toMax, toMin) : clamp(mapped, toMin, toMax);
+        }
+        result = mapped;
+    }
+}
+
+Function BLMath_clamp(in float value, in float lo, in float hi, in float type, out float result)
+{
+    if (int(type) == 1 && lo > hi) {
+        result = clamp(value, hi, lo);
+    }
+    else {
+        result = clamp(value, lo, hi);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------------------------
+
+Namespace(Name = "BL")
+{
+    Function Math(in float operation, in float a, in float b, in float c, in float doClamp,
+                  out float value)
+    {
+        float r = BLMath_op(operation, a, b, c);
+        // The node's Clamp checkbox clamps the *result* to 0..1, unrelated to the Clamp node.
+        value = (doClamp != 0.0) ? saturate(r) : r;
+    }
+
+    Function VectorMath(in float operation, in float3 a, in float3 b, in float3 c,
+                        in float scaleOrIor, out float value, out float3 vec)
+    {
+        BLMath_vector_op(operation, a, b, c, scaleOrIor, value, vec);
+    }
+
+    Function MapRange(in float value, in float fromMin, in float fromMax, in float toMin,
+                      in float toMax, in float steps, in float interpolation, in float doClamp,
+                      out float result)
+    {
+        result = BLMath_map_range(value, fromMin, fromMax, toMin, toMax, steps, interpolation,
+                                  doClamp);
+    }
+
+    Function Clamp(in float value, in float minValue, in float maxValue, in float type,
+                   out float result)
+    {
+        result = BLMath_clamp(value, minValue, maxValue, type);
+    }
+}

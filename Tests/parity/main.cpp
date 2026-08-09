@@ -53,6 +53,16 @@ using hlsl::dot;
 using hlsl::length;
 using hlsl::normalize;
 using hlsl::asuint;
+using hlsl::frac;
+using hlsl::trunc;
+using hlsl::log;
+using hlsl::tan;
+using hlsl::asin;
+using hlsl::atan;
+using hlsl::sinh;
+using hlsl::cosh;
+using hlsl::tanh;
+using hlsl::cross;
 
 #include "Generated.ush"
 }  // namespace port
@@ -61,6 +71,9 @@ using hlsl::asuint;
 #include "kernel/svm/fractal_noise.h"
 #include "kernel/svm/noise.h"
 #include "util/hash.h"
+
+// The four colour conversions, excerpted from the fetched util/color.h by run.ps1.
+#include "color_subset.h"
 
 // ------------------------------------------------------------------------------------------------
 
@@ -284,6 +297,38 @@ int main() {
            ref::noise_hetero_terrain(ref::make_float2(x, y), detail, rough, lac, off));
     }
     report(mf, 8); report(ht, 8); report(hy, 8); report(rg, 8); report(mf4, 8); report(ht2, 8);
+  }
+
+  // ---- colour space conversions ----------------------------------------------------------------
+  //
+  // The longest hand-written thing in the Color family, and the one where an exact `==` decides
+  // which hue sextant a pixel lands in — so the inputs deliberately include ties.
+  {
+    Rng rng;
+    Stat h2v{"rgb_to_hsv"}, v2h{"hsv_to_rgb"}, h2l{"rgb_to_hsl"}, l2h{"hsl_to_rgb"};
+    for (int i = 0; i < N; i++) {
+      float r0 = rng.unit(), g0 = rng.unit(), b0 = rng.unit();
+      if ((i & 7) == 0) { g0 = r0; }        // two channels equal
+      if ((i & 7) == 1) { b0 = r0; }
+      if ((i & 7) == 2) { r0 = g0 = b0; }   // grey: cmax == cmin
+
+      const hlsl::float3 a1 = port::DreamShaderFn_BLColor_rgb_to_hsv({r0, g0, b0});
+      const ref::float3 b1 = ref::rgb_to_hsv(ref::make_float3(r0, g0, b0));
+      feed(h2v, a1.x, b1.x); feed(h2v, a1.y, b1.y); feed(h2v, a1.z, b1.z);
+
+      const hlsl::float3 a2 = port::DreamShaderFn_BLColor_hsv_to_rgb({r0, g0, b0});
+      const ref::float3 b2 = ref::hsv_to_rgb(ref::make_float3(r0, g0, b0));
+      feed(v2h, a2.x, b2.x); feed(v2h, a2.y, b2.y); feed(v2h, a2.z, b2.z);
+
+      const hlsl::float3 a3 = port::DreamShaderFn_BLColor_rgb_to_hsl({r0, g0, b0});
+      const ref::float3 b3 = ref::rgb_to_hsl(ref::make_float3(r0, g0, b0));
+      feed(h2l, a3.x, b3.x); feed(h2l, a3.y, b3.y); feed(h2l, a3.z, b3.z);
+
+      const hlsl::float3 a4 = port::DreamShaderFn_BLColor_hsl_to_rgb({r0, g0, b0});
+      const ref::float3 b4 = ref::hsl_to_rgb(ref::make_float3(r0, g0, b0));
+      feed(l2h, a4.x, b4.x); feed(l2h, a4.y, b4.y); feed(l2h, a4.z, b4.z);
+    }
+    report(h2v, 0); report(v2h, 0); report(h2l, 0); report(l2h, 0);
   }
 
   std::printf("\n%d checks, %d mismatches\n", g_checks, g_failures);

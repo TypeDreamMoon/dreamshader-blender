@@ -50,8 +50,13 @@ Copy it out of `DShader/Packages` before building it — a `.dsm` inside a packa
 | Brick Texture | `BL::TexBrick` | `Brick.dsh` | ported |
 | Voronoi Texture, all 5 features × 4 dimensions × 4 metrics | `BL::TexVoronoi*_*D` | `Voronoi.dsh` | ported |
 | Gabor Texture, 2D and 3D | `BL::TexGabor2D`, `BL::TexGabor3D` | `Gabor.dsh` | ported |
-| Converter / Color / Vector families | — | — | next |
-| Input family (Texture Coordinate, Geometry, Attribute…) | — | — | blocked on the coordinate-space mapping |
+| Math (all 41 operations), Vector Math (all 30), Map Range, Clamp | `BL::Math`, `BL::VectorMath`, `BL::MapRange`, `BL::Clamp` | `Math.dsh` | ported |
+| Mix Color (19 modes), Bright/Contrast, Gamma, Hue/Sat/Value, Invert, Separate/Combine Color, RGB to BW | `BL::MixColor`, `BL::Gamma`, … | `Color.dsh` | ported |
+| Mapping (4 types), Vector Rotate (5), Normal, Separate/Combine XYZ | `BL::Mapping`, `BL::VectorRotate`, … | `Vector.dsh` | ported |
+| Texture Coordinate — Generated, Object, UV, Normal | `BL::CoordGenerated`, … | `Space.dsh` | ported |
+| Blackbody, Wavelength | — | — | need their CIE / blackbody coefficient tables |
+| Float Curve, RGB Curves, ColorRamp, Vector Curves | — | — | carry baked widget data; need a CurveAtlas design |
+| Texture Coordinate — Camera, Window, Reflection | — | — | need view matrices whose handedness differs; deliberately absent |
 | BSDF closures | — | — | out of scope without Substrate; see below |
 
 Import a single header when you only need one family — the closure is inlined as text, so a
@@ -181,16 +186,34 @@ negative, and deliberately sitting on cell boundaries where a sign or rounding m
 | `perlin_1d` … `perlin_4d`, `snoise_1d` … `snoise_4d` | 0 ulp |
 | `fbm_1d` … `fbm_4d`, normalized and not | 0 ulp |
 | Multifractal, Hetero Terrain, Hybrid, Ridged | 0 ulp |
+| `rgb_to_hsv`, `hsv_to_rgb`, `rgb_to_hsl`, `hsl_to_rgb` | 0 ulp |
 
 Upstream is the oracle rather than a second transcription, so a wrong constant surfaces as a
 mismatch instead of being reproduced identically on both sides. The harness is mutation-tested:
 changing `0.9820` to `0.9821` in one function fails exactly the seven checks that depend on 3D
 snoise and leaves 1D, 2D, 4D and the hashes green.
 
-**Not yet covered:** Voronoi and Gabor, and the node-level entry points (`BL::Tex*`). Extending
-the harness to those needs more of the Cycles platform layer shimmed — the `VoronoiParams` struct,
-the feature enums, `spherical_to_direction`. The hashes underneath them *are* verified, which is
-where the arbitrary constants live. See [`Tests/README.md`](Tests/README.md).
+**Not yet covered:** Voronoi, Gabor, the Math and Vector Math operation tables, and the node-level
+entry points (`BL::Tex*`). Extending the harness to those needs more of the Cycles platform layer
+shimmed — the `VoronoiParams` struct, the operation enums, `spherical_to_direction`. The hashes and
+colour conversions underneath them *are* verified, which is where the arbitrary constants live.
+See [`Tests/README.md`](Tests/README.md).
+
+### Coordinate space
+
+**This is the part that decides whether any of the rest means anything.** Every texture here is a
+function of a coordinate; feed it Unreal's coordinate and you get Blender's function of the wrong
+input — which looks plausible and is wrong everywhere.
+
+[`Space.dsh`](Library/Space.dsh) implements the conversion and writes out the derivation. The short
+version: the standard Blender-to-Unreal export negates Y and scales by 100, so
+`bl = float3(ue.x, -ue.y, ue.z) / unitScale`, with `unitScale` a parameter rather than a constant
+because a project authored at a different scale would otherwise get silently wrong frequencies.
+
+The Y negation has a consequence worth knowing before you debug it: **Generated's Y is one minus
+Unreal's normalised Y**, because negating an axis swaps which end of the bounding box is the
+minimum. Normalise-then-convert and convert-then-normalise are not the same operation. UV flips
+too, for the unrelated reason that Blender's V origin is bottom-left.
 
 ## Porting rules
 

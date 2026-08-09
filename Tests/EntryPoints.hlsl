@@ -196,3 +196,53 @@ float4 EP_Gabor(float2 uv : TEXCOORD0, float3 knobs : TEXCOORD1) : SV_Target
 
     return float4(v2, ph2 + in2, v3, ph3 + in3);
 }
+
+// SM5 pass: the Converter, Color and Vector families. Every dropdown dynamic, so all forty Math
+// operations, all twenty-seven Vector Math operations and all nineteen mix modes are compiled.
+float4 EP_Converter(float2 uv : TEXCOORD0, float4 knobs : TEXCOORD1) : SV_Target
+{
+    float mathOp = knobs.x;
+    float vecOp  = knobs.y;
+    float mode   = knobs.z;
+    float type   = knobs.w;
+
+    float3 p     = float3(uv, 0.0);
+    float3 white = float3(1.0, 1.0, 1.0);
+    float3 grey  = float3(0.5, 0.5, 0.5);
+
+    float3 vecMathVec;
+    float  vecMathVal = DreamShaderFn_BL_VectorMath(vecOp, p, grey, white, 2.0, vecMathVec);
+
+    float m  = DreamShaderFn_BL_Math(mathOp, uv.x, uv.y, 0.25, 0.0);
+    float mr = DreamShaderFn_BL_MapRange(uv.x, 0.0, 1.0, -1.0, 2.0, 4.0, mode, 1.0);
+    float cl = DreamShaderFn_BL_Clamp(uv.y, 0.2, 0.8, mode);
+    float bw = DreamShaderFn_BL_RGBToBW(grey);
+
+    float3 mix  = DreamShaderFn_BL_MixColor(mode, uv.x, white, grey, 1.0, 1.0);
+    float3 bc   = DreamShaderFn_BL_BrightContrast(grey, uv.x, uv.y);
+    float3 gam  = DreamShaderFn_BL_Gamma(grey, 2.2);
+    float3 hsv  = DreamShaderFn_BL_HueSaturation(grey, uv.x, uv.y, 1.0, 1.0);
+    float3 inv  = DreamShaderFn_BL_Invert(uv.x, grey);
+    float3 sep  = DreamShaderFn_BL_SeparateColor(grey, mode);
+    float3 comb = DreamShaderFn_BL_CombineColor(sep, mode);
+
+    float3 map = DreamShaderFn_BL_Mapping(type, p, grey, white, float3(2.0, 2.0, 2.0));
+    float3 rot = DreamShaderFn_BL_VectorRotate(type, p, grey, white, uv.x, white, 0.0);
+
+    float  nrmDot;
+    float3 nrm = DreamShaderFn_BL_Normal(white, p, nrmDot);
+
+    float sy, sz;
+    float sx = DreamShaderFn_BL_SeparateXYZ(p, sy, sz);
+    float3 cxyz = DreamShaderFn_BL_CombineXYZ(sx, sy, sz);
+
+    float3 gen  = DreamShaderFn_BLSpace_generated(p * 100.0, float3(-50.0, -50.0, -50.0),
+                                                  float3(50.0, 50.0, 50.0));
+    float3 obj  = DreamShaderFn_BLSpace_point_from_unreal(p * 100.0, 100.0);
+    float3 back = DreamShaderFn_BLSpace_point_to_unreal(obj, 100.0);
+
+    float3 color = vecMathVec + mix + bc + gam + hsv + inv + comb + map + rot + nrm + cxyz
+                 + gen + obj + back;
+    float  fac   = vecMathVal + m + mr + cl + bw + nrmDot;
+    return float4(color, fac);
+}

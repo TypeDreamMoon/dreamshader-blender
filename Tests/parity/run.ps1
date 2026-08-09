@@ -64,7 +64,7 @@ Write-Host "compiler : $gpp"
 # ---- fetch the upstream kernels ------------------------------------------------------------------
 
 $cache = Join-Path $here "cache/$Ref"
-$files = @('util/hash.h', 'kernel/svm/noise.h', 'kernel/svm/fractal_noise.h')
+$files = @('util/hash.h', 'util/color.h', 'kernel/svm/noise.h', 'kernel/svm/fractal_noise.h')
 foreach ($f in $files) {
     $dest = Join-Path $cache $f
     if (Test-Path -LiteralPath $dest) { continue }
@@ -103,6 +103,29 @@ $src = $src -replace '\.xyz\b', '.xyz()'
 $src = $src -replace '(?<![\w.])(\d+\.\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)(?![\w.])', '$1f'
 
 Set-Content -LiteralPath (Join-Path $build 'Generated.ush') -Value $src -NoNewline
+
+# util/color.h is fetched whole but only four functions are wanted from it: the rest of the file
+# is Cycles' spectral-rendering pipeline, which would drag in most of kernel/types.h for nothing.
+# They are excerpted *by name* from the downloaded file rather than copied by hand, so what gets
+# compiled is still upstream's own text.
+$colorSrc = Get-Content -LiteralPath (Join-Path $cache 'util/color.h') -Raw
+$wanted = @('rgb_to_hsv', 'hsv_to_rgb', 'rgb_to_hsl', 'hsl_to_rgb')
+$excerpt = @('#pragma once', '#include "util/math.h"', 'CCL_NAMESPACE_BEGIN', '')
+foreach ($fn in $wanted) {
+    $start = $colorSrc.IndexOf("ccl_device float3 $fn(")
+    if ($start -lt 0) { throw "util/color.h no longer defines $fn - upstream moved it." }
+    $depth = 0; $seen = $false; $i = $start
+    while ($i -lt $colorSrc.Length) {
+        if ($colorSrc[$i] -eq '{') { $depth++; $seen = $true }
+        elseif ($colorSrc[$i] -eq '}') { $depth-- }
+        if ($seen -and $depth -eq 0) { break }
+        $i++
+    }
+    $excerpt += $colorSrc.Substring($start, $i - $start + 1)
+    $excerpt += ''
+}
+$excerpt += 'CCL_NAMESPACE_END'
+Set-Content -LiteralPath (Join-Path $build 'color_subset.h') -Value ($excerpt -join "`n") -NoNewline
 
 # ---- build and run ---------------------------------------------------------------------------------
 #

@@ -1,0 +1,153 @@
+// Blender's Texture Coordinate node, and the axis/unit conversion underneath it.
+//
+// This is the piece that decides whether any of the rest of the package means anything. Every
+// procedural texture here is a function of a coordinate; feed it Unreal's coordinate and you get
+// Blender's function of the wrong input, which looks plausible and is wrong everywhere.
+//
+// No Cycles source to port — Blender's side of this is the depsgraph, not a shader kernel. What
+// follows is derived, and the derivation is written out because it is the part a reader has to be
+// able to check.
+//
+// ---------------------------------------------------------------------------------------------
+// The convention
+//
+// Blender is metres, right-handed, Z-up, with +Y pointing away from the front view. Unreal is
+// centimetres, left-handed, Z-up, with +Y to the right. The standard Blender-to-Unreal export
+// (the FBX "Unreal" preset, and glTF with the Unreal convention) resolves that by negating Y and
+// scaling by 100:
+//
+//     ue = float3(bl.x, -bl.y, bl.z) * 100
+//     bl = float3(ue.x, -ue.y, ue.z) / 100
+//
+// The scale is a parameter here rather than a constant, because a project that authored at a
+// different unit scale needs a different number and would otherwise get silently wrong texture
+// frequencies. `unitScale` is Unreal units per Blender unit — 100 for the default setup.
+//
+// If your assets came in through a different path, this is the one function to change.
+//
+// ---------------------------------------------------------------------------------------------
+// Why Generated flips
+//
+// Generated is the position normalised into the object's bounding box. Doing that in Unreal's
+// space and then converting is not the same as converting and then normalising, because the Y
+// negation swaps which end of the box is the minimum:
+//
+//     y_ue = -s * y_bl   =>   min_ue = -s * max_bl,  max_ue = -s * min_bl
+//     t_ue = (y_ue - min_ue) / (max_ue - min_ue)
+//          = (max_bl - y_bl) / (max_bl - min_bl)
+//          = 1 - t_bl
+//
+// So Generated's Y is one minus Unreal's normalised Y. X and Z pass through. This is the kind of
+// thing that produces a texture that looks right until it is mirrored.
+//
+// UV flips for the unrelated reason that Blender's V origin is bottom-left and Unreal's is
+// top-left.
+//
+// ---------------------------------------------------------------------------------------------
+// What is not here
+//
+// Blender's Camera, Window and Reflection outputs need view matrices whose Unreal equivalents
+// differ in handedness *and* in what "camera space" means (Blender looks down -Z). They are
+// deliberately absent rather than approximated. Object with a non-identity object-instancer
+// transform is likewise out of scope.
+
+import "Hash.dsh";
+
+// ---------------------------------------------------------------------------------------------
+// The conversion itself — plain arithmetic, no scene inputs, so it is testable in isolation.
+// ---------------------------------------------------------------------------------------------
+
+// A position in Unreal local space (centimetres) to Blender object space (metres).
+Function BLSpace_point_from_unreal(in float3 ueLocal, in float unitScale, out float3 result)
+{
+    float s = (unitScale != 0.0) ? (1.0 / unitScale) : 0.0;
+    result = float3(ueLocal.x, -ueLocal.y, ueLocal.z) * s;
+}
+
+// The inverse, for feeding a Blender-space result back into Unreal.
+Function BLSpace_point_to_unreal(in float3 blender, in float unitScale, out float3 result)
+{
+    result = float3(blender.x, -blender.y, blender.z) * unitScale;
+}
+
+// A direction. Same handedness flip, no unit scale — a direction has no length in metres worth
+// preserving, and callers normalise.
+Function BLSpace_dir_from_unreal(in float3 ueDir, out float3 result)
+{
+    result = float3(ueDir.x, -ueDir.y, ueDir.z);
+}
+
+Function BLSpace_dir_to_unreal(in float3 blenderDir, out float3 result)
+{
+    result = float3(blenderDir.x, -blenderDir.y, blenderDir.z);
+}
+
+// Normalise into the bounding box, then correct for the Y negation as derived above.
+Function BLSpace_generated(in float3 ueLocal, in float3 boundsMin, in float3 boundsMax,
+                        out float3 result)
+{
+    float3 extent = boundsMax - boundsMin;
+    float3 t = float3((extent.x != 0.0) ? (ueLocal.x - boundsMin.x) / extent.x : 0.0,
+                      (extent.y != 0.0) ? (ueLocal.y - boundsMin.y) / extent.y : 0.0,
+                      (extent.z != 0.0) ? (ueLocal.z - boundsMin.z) / extent.z : 0.0);
+    result = float3(t.x, 1.0 - t.y, t.z);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Public API — the Texture Coordinate node's outputs
+//
+// These are GraphFunctions, not Functions: they reach for scene inputs, and only a GraphFunction
+// can hoist a UE.* call out into a real graph node.
+//
+// `unitScale` is Unreal units per Blender unit; 100 for a default export.
+// ---------------------------------------------------------------------------------------------
+
+Namespace(Name = "BL")
+{
+    // Blender's Generated: the undeformed position normalised into the object's bounding box.
+    // Pre-skinned on both sides — Blender evaluates it before modifiers, Unreal's
+    // PreSkinnedPosition and PreSkinnedLocalBounds are before skinning — so an animated mesh does
+    // not swim through its own texture.
+    GraphFunction CoordGenerated(out float3 result)
+    {
+        float3 localPos = UE.Expression(Class="PreSkinnedPosition", OutputType="float3");
+        float3 boundsMin = UE.Expression(Class="PreSkinnedLocalBounds", Output="Min",
+                                         OutputType="float3");
+        float3 boundsMax = UE.Expression(Class="PreSkinnedLocalBounds", Output="Max",
+                                         OutputType="float3");
+        result = BLSpace_generated(localPos, boundsMin, boundsMax);
+    }
+
+    // Blender's Object: position in object space, origin at the object origin, in metres.
+    GraphFunction CoordObject(in float unitScale, out float3 result)
+    {
+        float3 localPos = UE.Expression(Class="PreSkinnedPosition", OutputType="float3");
+        result = BLSpace_point_from_unreal(localPos, unitScale);
+    }
+
+    // Blender's UV. The V flip is the origin convention, nothing to do with handedness.
+    GraphFunction CoordUV(in float uvIndex, out float3 result)
+    {
+        float2 uv = UE.TexCoord(Index=0);
+        result = float3(uv.x, 1.0 - uv.y, 0.0);
+    }
+
+    // Blender's Normal output: the object-space normal, in Blender's axes.
+    GraphFunction CoordNormal(out float3 result)
+    {
+        float3 n = UE.Expression(Class="PreSkinnedNormal", OutputType="float3");
+        result = BLSpace_dir_from_unreal(n);
+    }
+
+    // Not a Texture Coordinate output, but the other half of the round trip: take a vector a
+    // Blender-space node produced and put it back into Unreal's space.
+    GraphFunction ToUnrealPoint(in float3 blender, in float unitScale, out float3 result)
+    {
+        result = BLSpace_point_to_unreal(blender, unitScale);
+    }
+
+    GraphFunction ToUnrealDir(in float3 blenderDir, out float3 result)
+    {
+        result = BLSpace_dir_to_unreal(blenderDir);
+    }
+}

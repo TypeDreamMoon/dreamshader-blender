@@ -1,0 +1,340 @@
+// Blender's colour nodes: Mix Color, Bright/Contrast, Gamma, Hue/Saturation/Value, Invert,
+// Separate/Combine Color, RGB to BW.
+//
+// Sources: intern/cycles/kernel/svm/color_util.h, brightness.h, gamma.h, hsv.h, invert.h and the
+// conversions in intern/cycles/util/color.h — Apache-2.0. See NOTICE.
+
+import "Hash.dsh";
+
+// ---------------------------------------------------------------------------------------------
+// RGB <-> HSV / HSL
+//
+// Ported as written rather than replaced with a branchless formulation: the exact comparison
+// `rgb.x == cmax` decides which of three hue sextants you land in, and a reformulation would move
+// the boundary for inputs where two channels are equal.
+// ---------------------------------------------------------------------------------------------
+
+Function BLColor_rgb_to_hsv(in float3 rgb, out float3 result)
+{
+    float cmax = max(rgb.x, max(rgb.y, rgb.z));
+    float cmin = min(rgb.x, min(rgb.y, rgb.z));
+    float cdelta = cmax - cmin;
+
+    float v = cmax;
+    float s = (cmax != 0.0) ? (cdelta / cmax) : 0.0;
+    float h = 0.0;
+
+    if (s != 0.0) {
+        float3 c = (float3(cmax, cmax, cmax) - rgb) / cdelta;
+
+        if (rgb.x == cmax)      { h = c.z - c.y; }
+        else if (rgb.y == cmax) { h = 2.0 + c.x - c.z; }
+        else                    { h = 4.0 + c.y - c.x; }
+
+        h /= 6.0;
+        if (h < 0.0) { h += 1.0; }
+    }
+
+    result = float3(h, s, v);
+}
+
+Function BLColor_hsv_to_rgb(in float3 hsv, out float3 result)
+{
+    float h = hsv.x;
+    float s = hsv.y;
+    float v = hsv.z;
+
+    if (s != 0.0) {
+        if (h == 1.0) { h = 0.0; }
+
+        h *= 6.0;
+        float i = floor(h);
+        float f = h - i;
+        float p = v * (1.0 - s);
+        float q = v * (1.0 - (s * f));
+        float t = v * (1.0 - (s * (1.0 - f)));
+
+        if (i == 0.0)      { result = float3(v, t, p); }
+        else if (i == 1.0) { result = float3(q, v, p); }
+        else if (i == 2.0) { result = float3(p, v, t); }
+        else if (i == 3.0) { result = float3(p, q, v); }
+        else if (i == 4.0) { result = float3(t, p, v); }
+        else               { result = float3(v, p, q); }
+    }
+    else {
+        result = float3(v, v, v);
+    }
+}
+
+Function BLColor_rgb_to_hsl(in float3 rgb, out float3 result)
+{
+    float cmax = max(rgb.x, max(rgb.y, rgb.z));
+    float cmin = min(rgb.x, min(rgb.y, rgb.z));
+    float l = min(1.0, (cmax + cmin) / 2.0);
+
+    float h = 0.0;
+    float s = 0.0;
+
+    if (cmax != cmin) {
+        float cdelta = cmax - cmin;
+        s = (l > 0.5) ? (cdelta / (2.0 - cmax - cmin)) : (cdelta / (cmax + cmin));
+
+        if (cmax == rgb.x)      { h = (rgb.y - rgb.z) / cdelta + ((rgb.y < rgb.z) ? 6.0 : 0.0); }
+        else if (cmax == rgb.y) { h = (rgb.z - rgb.x) / cdelta + 2.0; }
+        else                    { h = (rgb.x - rgb.y) / cdelta + 4.0; }
+    }
+
+    // Note the division is outside the branch upstream, so the achromatic case divides zero by
+    // six rather than skipping. Same value, kept for exactness.
+    h /= 6.0;
+
+    result = float3(h, s, l);
+}
+
+Function BLColor_hsl_to_rgb(in float3 hsl, out float3 result)
+{
+    float h = hsl.x;
+    float s = hsl.y;
+    float l = hsl.z;
+
+    float nr = abs(h * 6.0 - 3.0) - 1.0;
+    float ng = 2.0 - abs(h * 6.0 - 2.0);
+    float nb = 2.0 - abs(h * 6.0 - 4.0);
+
+    nr = clamp(nr, 0.0, 1.0);
+    nb = clamp(nb, 0.0, 1.0);
+    ng = clamp(ng, 0.0, 1.0);
+
+    float chroma = (1.0 - abs(2.0 * l - 1.0)) * s;
+
+    result = float3((nr - 0.5) * chroma + l,
+                    (ng - 0.5) * chroma + l,
+                    (nb - 0.5) * chroma + l);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mix Color
+//
+//   0 Mix           1 Darken        2 Multiply      3 Color Burn    4 Lighten
+//   5 Screen        6 Color Dodge   7 Add           8 Overlay       9 Soft Light
+//  10 Linear Light 11 Difference   12 Exclusion    13 Subtract     14 Divide
+//  15 Hue          16 Saturation   17 Color        18 Value
+//
+// This is Blender's dropdown order, which is not upstream's enum order — the encoding is this
+// package's own, as everywhere else.
+// ---------------------------------------------------------------------------------------------
+
+Function BLColor_mix_overlay(in float t, in float3 col1, in float3 col2, out float3 result)
+{
+    float tm = 1.0 - t;
+    float3 o = col1;
+
+    o.x = (o.x < 0.5) ? (o.x * (tm + 2.0 * t * col2.x))
+                      : (1.0 - (tm + 2.0 * t * (1.0 - col2.x)) * (1.0 - o.x));
+    o.y = (o.y < 0.5) ? (o.y * (tm + 2.0 * t * col2.y))
+                      : (1.0 - (tm + 2.0 * t * (1.0 - col2.y)) * (1.0 - o.y));
+    o.z = (o.z < 0.5) ? (o.z * (tm + 2.0 * t * col2.z))
+                      : (1.0 - (tm + 2.0 * t * (1.0 - col2.z)) * (1.0 - o.z));
+    result = o;
+}
+
+Function BLColor_mix_div(in float t, in float3 col1, in float3 col2, out float3 result)
+{
+    float tm = 1.0 - t;
+    result = float3((col2.x != 0.0) ? (tm * col1.x + t * col1.x / col2.x) : col1.x,
+                    (col2.y != 0.0) ? (tm * col1.y + t * col1.y / col2.y) : col1.y,
+                    (col2.z != 0.0) ? (tm * col1.z + t * col1.z / col2.z) : col1.z);
+}
+
+Function BLColor_dodge1(in float t, in float a, in float b, out float result)
+{
+    if (a != 0.0) {
+        float tmp = 1.0 - t * b;
+        if (tmp <= 0.0) { result = 1.0; }
+        else {
+            tmp = a / tmp;
+            result = (tmp > 1.0) ? 1.0 : tmp;
+        }
+    }
+    else {
+        result = a;
+    }
+}
+
+Function BLColor_burn1(in float t, in float a, in float b, out float result)
+{
+    float tm = 1.0 - t;
+    float tmp = tm + t * b;
+    if (tmp <= 0.0) { result = 0.0; }
+    else {
+        tmp = 1.0 - (1.0 - a) / tmp;
+        result = (tmp < 0.0) ? 0.0 : ((tmp > 1.0) ? 1.0 : tmp);
+    }
+}
+
+Function BLColor_mix(in float mode, in float t, in float3 col1, in float3 col2, out float3 result)
+{
+    int m = int(mode);
+    float tm = 1.0 - t;
+    float3 one = float3(1.0, 1.0, 1.0);
+
+    if (m == 0) {
+        // Blend. Written as the endpoint-preserving form so t == 1 returns col2 exactly.
+        result = tm * col1 + t * col2;
+    }
+    else if (m == 1) { result = lerp(col1, min(col1, col2), t); }
+    else if (m == 2) { result = col1 * (float3(tm, tm, tm) + t * col2); }
+    else if (m == 3) {
+        result = float3(BLColor_burn1(t, col1.x, col2.x),
+                        BLColor_burn1(t, col1.y, col2.y),
+                        BLColor_burn1(t, col1.z, col2.z));
+    }
+    else if (m == 4) { result = lerp(col1, max(col1, col2), t); }
+    else if (m == 5) {
+        result = one - (float3(tm, tm, tm) + t * (one - col2)) * (one - col1);
+    }
+    else if (m == 6) {
+        result = float3(BLColor_dodge1(t, col1.x, col2.x),
+                        BLColor_dodge1(t, col1.y, col2.y),
+                        BLColor_dodge1(t, col1.z, col2.z));
+    }
+    else if (m == 7) { result = col1 + t * col2; }
+    else if (m == 8) { result = BLColor_mix_overlay(t, col1, col2); }
+    else if (m == 9) {
+        float3 scr = one - (one - col2) * (one - col1);
+        result = tm * col1 + t * ((one - col1) * col2 * col1 + col1 * scr);
+    }
+    else if (m == 10) { result = col1 + t * (2.0 * col2 - one); }
+    else if (m == 11) { result = lerp(col1, abs(col1 - col2), t); }
+    else if (m == 12) {
+        result = max(lerp(col1, col1 + col2 - 2.0 * col1 * col2, t), float3(0.0, 0.0, 0.0));
+    }
+    else if (m == 13) { result = col1 - t * col2; }
+    else if (m == 14) { result = BLColor_mix_div(t, col1, col2); }
+    else if (m == 15) {
+        // Hue, Saturation, Color and Value all leave col1 untouched when the relevant channel of
+        // the source is zero — that guard is upstream's, not an optimisation.
+        float3 hsv2 = BLColor_rgb_to_hsv(col2);
+        result = col1;
+        if (hsv2.y != 0.0) {
+            float3 hsv = BLColor_rgb_to_hsv(col1);
+            hsv.x = hsv2.x;
+            float3 tmp = BLColor_hsv_to_rgb(hsv);
+            result = lerp(col1, tmp, t);
+        }
+    }
+    else if (m == 16) {
+        float3 hsv = BLColor_rgb_to_hsv(col1);
+        result = col1;
+        if (hsv.y != 0.0) {
+            float3 hsv2 = BLColor_rgb_to_hsv(col2);
+            hsv.y = tm * hsv.y + t * hsv2.y;
+            result = BLColor_hsv_to_rgb(hsv);
+        }
+    }
+    else if (m == 17) {
+        float3 hsv2 = BLColor_rgb_to_hsv(col2);
+        result = col1;
+        if (hsv2.y != 0.0) {
+            float3 hsv = BLColor_rgb_to_hsv(col1);
+            hsv.x = hsv2.x;
+            hsv.y = hsv2.y;
+            float3 tmp = BLColor_hsv_to_rgb(hsv);
+            result = lerp(col1, tmp, t);
+        }
+    }
+    else if (m == 18) {
+        float3 hsv = BLColor_rgb_to_hsv(col1);
+        float3 hsv2 = BLColor_rgb_to_hsv(col2);
+        hsv.z = tm * hsv.z + t * hsv2.z;
+        result = BLColor_hsv_to_rgb(hsv);
+    }
+    else { result = float3(0.0, 0.0, 0.0); }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------------------------
+
+Namespace(Name = "BL")
+{
+    Function MixColor(in float mode, in float fac, in float3 color1, in float3 color2,
+                      in float clampFactor, in float clampResult, out float3 color)
+    {
+        float t = (clampFactor != 0.0) ? saturate(fac) : fac;
+        float3 c = BLColor_mix(mode, t, color1, color2);
+        color = (clampResult != 0.0) ? saturate(c) : c;
+    }
+
+    Function BrightContrast(in float3 color, in float bright, in float contrast,
+                            out float3 outColor)
+    {
+        float a = 1.0 + contrast;
+        float b = bright - contrast * 0.5;
+        outColor = float3(max(a * color.x + b, 0.0),
+                          max(a * color.y + b, 0.0),
+                          max(a * color.z + b, 0.0));
+    }
+
+    Function Gamma(in float3 color, in float gamma, out float3 outColor)
+    {
+        if (gamma == 0.0) {
+            outColor = float3(1.0, 1.0, 1.0);
+        }
+        else {
+            // Only positive channels are raised; zero and negative pass through untouched, so a
+            // negative channel is not turned into NaN.
+            outColor = float3((color.x > 0.0) ? pow(color.x, gamma) : color.x,
+                              (color.y > 0.0) ? pow(color.y, gamma) : color.y,
+                              (color.z > 0.0) ? pow(color.z, gamma) : color.z);
+        }
+    }
+
+    Function HueSaturation(in float3 color, in float hue, in float saturation, in float value,
+                           in float fac, out float3 outColor)
+    {
+        float3 hsv = BLColor_rgb_to_hsv(color);
+
+        // Hue is offset by +0.5 then wrapped, so the node's default of 0.5 means "no change".
+        hsv.x = frac(hsv.x + hue + 0.5);
+        hsv.y = saturate(hsv.y * saturation);
+        hsv.z = hsv.z * value;
+
+        float3 c = BLColor_hsv_to_rgb(hsv);
+        c = fac * c + (1.0 - fac) * color;
+
+        // Over-saturation can drive a channel negative; upstream clamps rather than letting it
+        // through.
+        outColor = float3(max(c.x, 0.0), max(c.y, 0.0), max(c.z, 0.0));
+    }
+
+    Function Invert(in float fac, in float3 color, out float3 outColor)
+    {
+        outColor = float3(fac * (1.0 - color.x) + (1.0 - fac) * color.x,
+                          fac * (1.0 - color.y) + (1.0 - fac) * color.y,
+                          fac * (1.0 - color.z) + (1.0 - fac) * color.z);
+    }
+
+    // `mode`: 0 RGB | 1 HSV | 2 HSL
+    Function SeparateColor(in float3 color, in float mode, out float3 outChannels)
+    {
+        int m = int(mode);
+        if (m == 1)      { outChannels = BLColor_rgb_to_hsv(color); }
+        else if (m == 2) { outChannels = BLColor_rgb_to_hsl(color); }
+        else             { outChannels = color; }
+    }
+
+    Function CombineColor(in float3 channels, in float mode, out float3 outColor)
+    {
+        int m = int(mode);
+        if (m == 1)      { outColor = BLColor_hsv_to_rgb(channels); }
+        else if (m == 2) { outColor = BLColor_hsl_to_rgb(channels); }
+        else             { outColor = channels; }
+    }
+
+    // Rec.709 luminance, which is what Blender's RGB to BW uses.
+    Function RGBToBW(in float3 color, out float value)
+    {
+        value = color.x * 0.2126729 + color.y * 0.7151522 + color.z * 0.0721750;
+    }
+}

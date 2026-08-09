@@ -68,6 +68,32 @@ The upstream licence of each ported file, as declared by its own SPDX header:
       SPDX-License-Identifier: Apache-2.0
       -> Library/Gabor.dsh
 
+  intern/cycles/kernel/svm/math_util.h
+  intern/cycles/kernel/svm/map_range.h
+  intern/cycles/kernel/svm/clamp.h
+      SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+      SPDX-License-Identifier: Apache-2.0
+      -> Library/Math.dsh
+
+  intern/cycles/kernel/svm/color_util.h
+  intern/cycles/kernel/svm/brightness.h
+  intern/cycles/kernel/svm/gamma.h
+  intern/cycles/kernel/svm/hsv.h
+  intern/cycles/kernel/svm/invert.h
+  intern/cycles/util/color.h
+      SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+      SPDX-License-Identifier: Apache-2.0
+      -> Library/Color.dsh
+
+  intern/cycles/kernel/svm/mapping_util.h
+  intern/cycles/kernel/svm/vector_rotate.h
+  intern/cycles/kernel/svm/normal.h
+  intern/cycles/util/transform.h
+  intern/cycles/util/math_float3.h
+      SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+      SPDX-License-Identifier: Apache-2.0
+      -> Library/Vector.dsh (euler_to_transform, rotate_around_axis, the safe_* helpers)
+
 --------------------------------------------------------------------------------
 BSD-3-Clause (Open Shading Language derived code)
 --------------------------------------------------------------------------------

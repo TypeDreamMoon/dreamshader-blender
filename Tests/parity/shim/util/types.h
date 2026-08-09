@@ -24,6 +24,10 @@ struct int2 { int x = 0, y = 0; };
 struct int3 { int x = 0, y = 0, z = 0; };
 struct int4 { int x = 0, y = 0, z = 0, w = 0; };
 
+// util/color.h opens with byte-colour conversion helpers. Nothing on the compared path uses them,
+// but the file has to compile unmodified for the comparison to mean anything.
+struct uchar4 { uchar x = 0, y = 0, z = 0, w = 0; };
+
 ccl_device_inline float2 make_float2(const float x, const float y) { return {x, y}; }
 ccl_device_inline float2 make_float2(const float v) { return {v, v}; }
 ccl_device_inline float3 make_float3(const float x, const float y, const float z) { return {x, y, z}; }
@@ -41,6 +45,8 @@ ccl_device_inline int3 make_int3(const float3 v) { return {int(v.x), int(v.y), i
 ccl_device_inline int4 make_int4(const int x, const int y, const int z, const int w) { return {x, y, z, w}; }
 ccl_device_inline int4 make_int4(const int v) { return {v, v, v, v}; }
 ccl_device_inline int4 make_int4(const float4 v) { return {int(v.x), int(v.y), int(v.z), int(v.w)}; }
+
+ccl_device_inline uchar4 make_uchar4(const uchar x, const uchar y, const uchar z, const uchar w) { return {x, y, z, w}; }
 
 ccl_device_inline float3 zero_float3() { return {0.0f, 0.0f, 0.0f}; }
 ccl_device_inline float4 zero_float4() { return {0.0f, 0.0f, 0.0f, 0.0f}; }

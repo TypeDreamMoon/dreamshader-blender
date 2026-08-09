@@ -228,4 +228,40 @@ inline float4 normalize(float4 v) { return v / length(v); }
 inline uint asuint(float v) { uint r; std::memcpy(&r, &v, 4); return r; }
 inline uint asuint(int v) { return static_cast<uint>(v); }
 
+// ---- intrinsics reached by the Converter / Color / Vector families ---------------------------
+
+inline float frac(float v) { return v - std::floor(v); }
+inline float2 frac(float2 v) { return {frac(v.x), frac(v.y)}; }
+inline float3 frac(float3 v) { return {frac(v.x), frac(v.y), frac(v.z)}; }
+inline float trunc(float v) { return std::trunc(v); }
+inline float log(float v) { return std::log(v); }
+inline float tan(float v) { return std::tan(v); }
+inline float asin(float v) { return std::asin(v); }
+inline float atan(float v) { return std::atan(v); }
+inline float sinh(float v) { return std::sinh(v); }
+inline float cosh(float v) { return std::cosh(v); }
+inline float tanh(float v) { return std::tanh(v); }
+
+inline float3 sin(float3 v) { return {std::sin(v.x), std::sin(v.y), std::sin(v.z)}; }
+inline float3 cos(float3 v) { return {std::cos(v.x), std::cos(v.y), std::cos(v.z)}; }
+inline float3 tan(float3 v) { return {std::tan(v.x), std::tan(v.y), std::tan(v.z)}; }
+inline float3 ceil(float3 v) { return {std::ceil(v.x), std::ceil(v.y), std::ceil(v.z)}; }
+
+// Component-wise, as in HLSL.
+inline float2 min(float2 a, float2 b) { return {min(a.x, b.x), min(a.y, b.y)}; }
+inline float3 min(float3 a, float3 b) { return {min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)}; }
+inline float4 min(float4 a, float4 b) { return {min(a.x, b.x), min(a.y, b.y), min(a.z, b.z), min(a.w, b.w)}; }
+inline float2 max(float2 a, float2 b) { return {max(a.x, b.x), max(a.y, b.y)}; }
+inline float3 max(float3 a, float3 b) { return {max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)}; }
+inline float4 max(float4 a, float4 b) { return {max(a.x, b.x), max(a.y, b.y), max(a.z, b.z), max(a.w, b.w)}; }
+
+inline float3 clamp(float3 v, float3 lo, float3 hi) {
+  return {clamp(v.x, lo.x, hi.x), clamp(v.y, lo.y, hi.y), clamp(v.z, lo.z, hi.z)};
+}
+inline float3 saturate(float3 v) { return {saturate(v.x), saturate(v.y), saturate(v.z)}; }
+
+inline float3 cross(float3 a, float3 b) {
+  return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+}
+
 }  // namespace hlsl
