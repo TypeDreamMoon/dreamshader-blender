@@ -1,0 +1,16 @@
+# DreamShader build products — none of these belong to the package.
+/Intermediate/
+/Saved/
+dreamshader.lock.json
+
+# Golden-image test data. Reference renders are large and are regenerated from Blender;
+# keep them out of the package and point Tests/README.md at wherever they live.
+/Tests/_out/
+*.exr
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

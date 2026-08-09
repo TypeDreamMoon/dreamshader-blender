@@ -1,0 +1,22 @@
+{
+  "name": "@typedreammoon/dreamshader-blender",
+  "version": "0.1.0",
+  "displayName": "DreamShader Blender",
+  "description": "Blender's shader nodes, ported to DreamShaderLang from the Cycles kernel.",
+  "author": "TypeDreamMoon",
+  "repository": "https://github.com/TypeDreamMoon/dreamshader-blender",
+  "license": "Apache-2.0",
+  "dreamshader": {
+    "language": "DreamShaderLang",
+    "version": ">=1.5.0",
+    "entry": "Library/Blender.dsh"
+  },
+  "keywords": [
+    "dreamshader",
+    "dreamshader-package",
+    "blender",
+    "cycles",
+    "noise",
+    "procedural"
+  ]
+}

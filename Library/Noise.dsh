@@ -1,0 +1,549 @@
+// Blender's Noise Texture node (`ShaderNodeTexNoise`), ported from the Cycles SVM kernel.
+//
+// Sources, all from github.com/blender/blender:
+//   intern/cycles/kernel/svm/noise.h          Perlin 1D-4D          BSD-3-Clause (adapted from OSL)
+//   intern/cycles/kernel/svm/fractal_noise.h  fBM                   Apache-2.0
+//   intern/cycles/kernel/svm/noisetex.h       the node itself       Apache-2.0
+//   intern/cycles/util/math_base.h            floorfrac             Apache-2.0
+// See NOTICE at the repository root.
+//
+// Deliberately ported from Cycles and not from `source/blender/gpu/shaders/material/*.glsl`:
+// the EEVEE GLSL carries `GPL-2.0-or-later`, the Cycles kernel does not. The EEVEE files were
+// read for behaviour only.
+//
+// Scope of this file: fBM only. Blender's other four fractal types (Multifractal, Hybrid
+// Multifractal, Ridged Multifractal, Hetero Terrain) live in fractal_noise.h alongside fBM and
+// are the next port; see the roadmap in README.md.
+
+import "Hash.dsh";
+
+// ---------------------------------------------------------------------------------------------
+// Perlin noise
+// ---------------------------------------------------------------------------------------------
+
+Function BLNoise_fade(in float t, out float result)
+{
+    result = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+Function BLNoise_grad1(in uint hash, in float x, out float result)
+{
+    uint h = hash & 15u;
+    float g = 1.0 + float(h & 7u);
+    result = ((h & 8u) != 0u ? -g : g) * x;
+}
+
+Function BLNoise_grad2(in uint hash, in float x, in float y, out float result)
+{
+    uint h = hash & 7u;
+    float u = (h < 4u) ? x : y;
+    float v = 2.0 * ((h < 4u) ? y : x);
+    result = ((h & 1u) != 0u ? -u : u) + ((h & 2u) != 0u ? -v : v);
+}
+
+Function BLNoise_grad3(in uint hash, in float x, in float y, in float z, out float result)
+{
+    uint h = hash & 15u;
+    float u = (h < 8u) ? x : y;
+    float vt = ((h == 12u) || (h == 14u)) ? x : z;
+    float v = (h < 4u) ? y : vt;
+    result = ((h & 1u) != 0u ? -u : u) + ((h & 2u) != 0u ? -v : v);
+}
+
+Function BLNoise_grad4(in uint hash, in float x, in float y, in float z, in float w, out float result)
+{
+    uint h = hash & 31u;
+    float u = (h < 24u) ? x : y;
+    float v = (h < 16u) ? y : z;
+    float s = (h <  8u) ? z : w;
+    result = ((h & 1u) != 0u ? -u : u) + ((h & 2u) != 0u ? -v : v) + ((h & 4u) != 0u ? -s : s);
+}
+
+Function BLNoise_bi_mix(in float v0, in float v1, in float v2, in float v3,
+                        in float x, in float y, out float result)
+{
+    float x1 = 1.0 - x;
+    result = (1.0 - y) * (v0 * x1 + v1 * x) + y * (v2 * x1 + v3 * x);
+}
+
+Function BLNoise_tri_mix(in float v0, in float v1, in float v2, in float v3,
+                         in float v4, in float v5, in float v6, in float v7,
+                         in float x, in float y, in float z, out float result)
+{
+    float x1 = 1.0 - x;
+    float y1 = 1.0 - y;
+    float z1 = 1.0 - z;
+    result = z1 * (y1 * (v0 * x1 + v1 * x) + y * (v2 * x1 + v3 * x)) +
+             z  * (y1 * (v4 * x1 + v5 * x) + y * (v6 * x1 + v7 * x));
+}
+
+// floorfrac is inlined at each site: upstream returns the fraction and writes the integer part
+// through a pointer, and a Function cannot have two outputs and still be called by value.
+//
+// Every hash and gradient below is hoisted into its own local rather than nested into the
+// interpolator's argument list. This is not a style choice — a call to a sibling Function may NOT
+// appear inside another sibling call's arguments, because the generator rewrites only the
+// outermost call in an expression and emits the inner one as an undefined symbol. Nesting inside
+// an HLSL intrinsic (`lerp`, `float3(...)`, `asuint(...)`) is fine. See README.md, "Porting rules".
+
+Function BLNoise_perlin_1d(in float x, out float result)
+{
+    float flx = floor(x);
+    int X = int(flx);
+    float fx = x - flx;
+
+    float u = BLNoise_fade(fx);
+
+    uint h0 = BLHash_uint1(asuint(X));
+    uint h1 = BLHash_uint1(asuint(X + 1));
+
+    float g0 = BLNoise_grad1(h0, fx);
+    float g1 = BLNoise_grad1(h1, fx - 1.0);
+
+    result = lerp(g0, g1, u);
+}
+
+Function BLNoise_perlin_2d(in float x, in float y, out float result)
+{
+    float flx = floor(x);
+    float fly = floor(y);
+    int X = int(flx);
+    int Y = int(fly);
+    float fx = x - flx;
+    float fy = y - fly;
+
+    float u = BLNoise_fade(fx);
+    float v = BLNoise_fade(fy);
+
+    uint h00 = BLHash_uint2(asuint(X),     asuint(Y));
+    uint h10 = BLHash_uint2(asuint(X + 1), asuint(Y));
+    uint h01 = BLHash_uint2(asuint(X),     asuint(Y + 1));
+    uint h11 = BLHash_uint2(asuint(X + 1), asuint(Y + 1));
+
+    float g00 = BLNoise_grad2(h00, fx,       fy);
+    float g10 = BLNoise_grad2(h10, fx - 1.0, fy);
+    float g01 = BLNoise_grad2(h01, fx,       fy - 1.0);
+    float g11 = BLNoise_grad2(h11, fx - 1.0, fy - 1.0);
+
+    result = BLNoise_bi_mix(g00, g10, g01, g11, u, v);
+}
+
+Function BLNoise_perlin_3d(in float x, in float y, in float z, out float result)
+{
+    float flx = floor(x);
+    float fly = floor(y);
+    float flz = floor(z);
+    int X = int(flx);
+    int Y = int(fly);
+    int Z = int(flz);
+    float fx = x - flx;
+    float fy = y - fly;
+    float fz = z - flz;
+
+    float u = BLNoise_fade(fx);
+    float v = BLNoise_fade(fy);
+    float w = BLNoise_fade(fz);
+
+    uint h000 = BLHash_uint3(asuint(X),     asuint(Y),     asuint(Z));
+    uint h100 = BLHash_uint3(asuint(X + 1), asuint(Y),     asuint(Z));
+    uint h010 = BLHash_uint3(asuint(X),     asuint(Y + 1), asuint(Z));
+    uint h110 = BLHash_uint3(asuint(X + 1), asuint(Y + 1), asuint(Z));
+    uint h001 = BLHash_uint3(asuint(X),     asuint(Y),     asuint(Z + 1));
+    uint h101 = BLHash_uint3(asuint(X + 1), asuint(Y),     asuint(Z + 1));
+    uint h011 = BLHash_uint3(asuint(X),     asuint(Y + 1), asuint(Z + 1));
+    uint h111 = BLHash_uint3(asuint(X + 1), asuint(Y + 1), asuint(Z + 1));
+
+    float g000 = BLNoise_grad3(h000, fx,       fy,       fz);
+    float g100 = BLNoise_grad3(h100, fx - 1.0, fy,       fz);
+    float g010 = BLNoise_grad3(h010, fx,       fy - 1.0, fz);
+    float g110 = BLNoise_grad3(h110, fx - 1.0, fy - 1.0, fz);
+    float g001 = BLNoise_grad3(h001, fx,       fy,       fz - 1.0);
+    float g101 = BLNoise_grad3(h101, fx - 1.0, fy,       fz - 1.0);
+    float g011 = BLNoise_grad3(h011, fx,       fy - 1.0, fz - 1.0);
+    float g111 = BLNoise_grad3(h111, fx - 1.0, fy - 1.0, fz - 1.0);
+
+    result = BLNoise_tri_mix(g000, g100, g010, g110, g001, g101, g011, g111, u, v, w);
+}
+
+Function BLNoise_perlin_4d(in float x, in float y, in float z, in float w, out float result)
+{
+    float flx = floor(x);
+    float fly = floor(y);
+    float flz = floor(z);
+    float flw = floor(w);
+    int X = int(flx);
+    int Y = int(fly);
+    int Z = int(flz);
+    int W = int(flw);
+    float fx = x - flx;
+    float fy = y - fly;
+    float fz = z - flz;
+    float fw = w - flw;
+
+    float u = BLNoise_fade(fx);
+    float v = BLNoise_fade(fy);
+    float t = BLNoise_fade(fz);
+    float s = BLNoise_fade(fw);
+
+    uint h0000 = BLHash_uint4(asuint(X),     asuint(Y),     asuint(Z),     asuint(W));
+    uint h1000 = BLHash_uint4(asuint(X + 1), asuint(Y),     asuint(Z),     asuint(W));
+    uint h0100 = BLHash_uint4(asuint(X),     asuint(Y + 1), asuint(Z),     asuint(W));
+    uint h1100 = BLHash_uint4(asuint(X + 1), asuint(Y + 1), asuint(Z),     asuint(W));
+    uint h0010 = BLHash_uint4(asuint(X),     asuint(Y),     asuint(Z + 1), asuint(W));
+    uint h1010 = BLHash_uint4(asuint(X + 1), asuint(Y),     asuint(Z + 1), asuint(W));
+    uint h0110 = BLHash_uint4(asuint(X),     asuint(Y + 1), asuint(Z + 1), asuint(W));
+    uint h1110 = BLHash_uint4(asuint(X + 1), asuint(Y + 1), asuint(Z + 1), asuint(W));
+
+    float g0000 = BLNoise_grad4(h0000, fx,       fy,       fz,       fw);
+    float g1000 = BLNoise_grad4(h1000, fx - 1.0, fy,       fz,       fw);
+    float g0100 = BLNoise_grad4(h0100, fx,       fy - 1.0, fz,       fw);
+    float g1100 = BLNoise_grad4(h1100, fx - 1.0, fy - 1.0, fz,       fw);
+    float g0010 = BLNoise_grad4(h0010, fx,       fy,       fz - 1.0, fw);
+    float g1010 = BLNoise_grad4(h1010, fx - 1.0, fy,       fz - 1.0, fw);
+    float g0110 = BLNoise_grad4(h0110, fx,       fy - 1.0, fz - 1.0, fw);
+    float g1110 = BLNoise_grad4(h1110, fx - 1.0, fy - 1.0, fz - 1.0, fw);
+
+    uint h0001 = BLHash_uint4(asuint(X),     asuint(Y),     asuint(Z),     asuint(W + 1));
+    uint h1001 = BLHash_uint4(asuint(X + 1), asuint(Y),     asuint(Z),     asuint(W + 1));
+    uint h0101 = BLHash_uint4(asuint(X),     asuint(Y + 1), asuint(Z),     asuint(W + 1));
+    uint h1101 = BLHash_uint4(asuint(X + 1), asuint(Y + 1), asuint(Z),     asuint(W + 1));
+    uint h0011 = BLHash_uint4(asuint(X),     asuint(Y),     asuint(Z + 1), asuint(W + 1));
+    uint h1011 = BLHash_uint4(asuint(X + 1), asuint(Y),     asuint(Z + 1), asuint(W + 1));
+    uint h0111 = BLHash_uint4(asuint(X),     asuint(Y + 1), asuint(Z + 1), asuint(W + 1));
+    uint h1111 = BLHash_uint4(asuint(X + 1), asuint(Y + 1), asuint(Z + 1), asuint(W + 1));
+
+    float g0001 = BLNoise_grad4(h0001, fx,       fy,       fz,       fw - 1.0);
+    float g1001 = BLNoise_grad4(h1001, fx - 1.0, fy,       fz,       fw - 1.0);
+    float g0101 = BLNoise_grad4(h0101, fx,       fy - 1.0, fz,       fw - 1.0);
+    float g1101 = BLNoise_grad4(h1101, fx - 1.0, fy - 1.0, fz,       fw - 1.0);
+    float g0011 = BLNoise_grad4(h0011, fx,       fy,       fz - 1.0, fw - 1.0);
+    float g1011 = BLNoise_grad4(h1011, fx - 1.0, fy,       fz - 1.0, fw - 1.0);
+    float g0111 = BLNoise_grad4(h0111, fx,       fy - 1.0, fz - 1.0, fw - 1.0);
+    float g1111 = BLNoise_grad4(h1111, fx - 1.0, fy - 1.0, fz - 1.0, fw - 1.0);
+
+    // quad_mix is a lerp between two tri_mix results along w.
+    float lo = BLNoise_tri_mix(g0000, g1000, g0100, g1100, g0010, g1010, g0110, g1110, u, v, t);
+    float hi = BLNoise_tri_mix(g0001, g1001, g0101, g1101, g0011, g1011, g0111, g1111, u, v, t);
+
+    result = lerp(lo, hi, s);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Signed / unsigned noise
+//
+// The scale constants remap Perlin's output to a predictable [-1, 1]; they were measured
+// experimentally by the OSL developers and are not derivable. The `fmod` wrap repeats the texture
+// every 100000 units to keep float precision usable; the +0.5 correction past 1000000 is
+// upstream's, and reproducing it matters for parity even though it is invisible in practice.
+// ---------------------------------------------------------------------------------------------
+
+Function BLNoise_snoise_1d(in float p, out float result)
+{
+    float correction = 0.5 * step(1000000.0, abs(p));
+    float q = fmod(p, 100000.0) + correction;
+    result = 0.2500 * BLNoise_perlin_1d(q);
+}
+
+Function BLNoise_snoise_2d(in float2 p, out float result)
+{
+    float2 correction = 0.5 * step(1000000.0, abs(p));
+    float2 q = fmod(p, 100000.0) + correction;
+    result = 0.6616 * BLNoise_perlin_2d(q.x, q.y);
+}
+
+Function BLNoise_snoise_3d(in float3 p, out float result)
+{
+    float3 correction = 0.5 * step(1000000.0, abs(p));
+    float3 q = fmod(p, 100000.0) + correction;
+    result = 0.9820 * BLNoise_perlin_3d(q.x, q.y, q.z);
+}
+
+Function BLNoise_snoise_4d(in float4 p, out float result)
+{
+    float4 correction = 0.5 * step(1000000.0, abs(p));
+    float4 q = fmod(p, 100000.0) + correction;
+    result = 0.8344 * BLNoise_perlin_4d(q.x, q.y, q.z, q.w);
+}
+
+// ---------------------------------------------------------------------------------------------
+// fBM
+//
+// `normalize01` is Blender's Normalize checkbox as 0.0 / 1.0 — the language has no bool-valued
+// function input, and a float lets a caller drive it from a scalar parameter.
+//
+// The loop bound is dynamic. `detail` is clamped to [0, 15] by the node entry points below,
+// matching Blender's own UI range, so the loop runs at most 16 times.
+// ---------------------------------------------------------------------------------------------
+
+Function BLNoise_fbm_1d(in float p, in float detail, in float roughness, in float lacunarity,
+                        in float normalize01, out float result)
+{
+    float fscale = 1.0;
+    float amp = 1.0;
+    float maxamp = 0.0;
+    float sum = 0.0;
+
+    int octaves = int(detail);
+    for (int i = 0; i <= octaves; i++) {
+        float t = BLNoise_snoise_1d(fscale * p);
+        sum += t * amp;
+        maxamp += amp;
+        amp *= roughness;
+        fscale *= lacunarity;
+    }
+
+    float rmd = detail - floor(detail);
+    if (rmd != 0.0) {
+        float t2 = BLNoise_snoise_1d(fscale * p);
+        float sum2 = sum + t2 * amp;
+        result = (normalize01 != 0.0)
+            ? lerp(0.5 * sum / maxamp + 0.5, 0.5 * sum2 / (maxamp + amp) + 0.5, rmd)
+            : lerp(sum, sum2, rmd);
+    }
+    else {
+        result = (normalize01 != 0.0) ? (0.5 * sum / maxamp + 0.5) : sum;
+    }
+}
+
+Function BLNoise_fbm_2d(in float2 p, in float detail, in float roughness, in float lacunarity,
+                        in float normalize01, out float result)
+{
+    float fscale = 1.0;
+    float amp = 1.0;
+    float maxamp = 0.0;
+    float sum = 0.0;
+
+    int octaves = int(detail);
+    for (int i = 0; i <= octaves; i++) {
+        float t = BLNoise_snoise_2d(fscale * p);
+        sum += t * amp;
+        maxamp += amp;
+        amp *= roughness;
+        fscale *= lacunarity;
+    }
+
+    float rmd = detail - floor(detail);
+    if (rmd != 0.0) {
+        float t2 = BLNoise_snoise_2d(fscale * p);
+        float sum2 = sum + t2 * amp;
+        result = (normalize01 != 0.0)
+            ? lerp(0.5 * sum / maxamp + 0.5, 0.5 * sum2 / (maxamp + amp) + 0.5, rmd)
+            : lerp(sum, sum2, rmd);
+    }
+    else {
+        result = (normalize01 != 0.0) ? (0.5 * sum / maxamp + 0.5) : sum;
+    }
+}
+
+Function BLNoise_fbm_3d(in float3 p, in float detail, in float roughness, in float lacunarity,
+                        in float normalize01, out float result)
+{
+    float fscale = 1.0;
+    float amp = 1.0;
+    float maxamp = 0.0;
+    float sum = 0.0;
+
+    int octaves = int(detail);
+    for (int i = 0; i <= octaves; i++) {
+        float t = BLNoise_snoise_3d(fscale * p);
+        sum += t * amp;
+        maxamp += amp;
+        amp *= roughness;
+        fscale *= lacunarity;
+    }
+
+    float rmd = detail - floor(detail);
+    if (rmd != 0.0) {
+        float t2 = BLNoise_snoise_3d(fscale * p);
+        float sum2 = sum + t2 * amp;
+        result = (normalize01 != 0.0)
+            ? lerp(0.5 * sum / maxamp + 0.5, 0.5 * sum2 / (maxamp + amp) + 0.5, rmd)
+            : lerp(sum, sum2, rmd);
+    }
+    else {
+        result = (normalize01 != 0.0) ? (0.5 * sum / maxamp + 0.5) : sum;
+    }
+}
+
+Function BLNoise_fbm_4d(in float4 p, in float detail, in float roughness, in float lacunarity,
+                        in float normalize01, out float result)
+{
+    float fscale = 1.0;
+    float amp = 1.0;
+    float maxamp = 0.0;
+    float sum = 0.0;
+
+    int octaves = int(detail);
+    for (int i = 0; i <= octaves; i++) {
+        float t = BLNoise_snoise_4d(fscale * p);
+        sum += t * amp;
+        maxamp += amp;
+        amp *= roughness;
+        fscale *= lacunarity;
+    }
+
+    float rmd = detail - floor(detail);
+    if (rmd != 0.0) {
+        float t2 = BLNoise_snoise_4d(fscale * p);
+        float sum2 = sum + t2 * amp;
+        result = (normalize01 != 0.0)
+            ? lerp(0.5 * sum / maxamp + 0.5, 0.5 * sum2 / (maxamp + amp) + 0.5, rmd)
+            : lerp(sum, sum2, rmd);
+    }
+    else {
+        result = (normalize01 != 0.0) ? (0.5 * sum / maxamp + 0.5) : sum;
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Seed offsets
+//
+// Blender's noise functions take no seed, so the node fakes one by offsetting the coordinate.
+// The components land in [100, 200]: high enough to decorrelate, low enough not to wreck
+// precision. The 2D/3D/4D variants all hash a float2 — that is upstream's choice, not a typo.
+// ---------------------------------------------------------------------------------------------
+
+Function BLNoise_rand_offset_1d(in float seed, out float result)
+{
+    result = 100.0 + BLHash_float1_to_float(seed) * 100.0;
+}
+
+Function BLNoise_rand_offset_2d(in float seed, out float2 result)
+{
+    result = float2(100.0 + BLHash_float2_to_float(float2(seed, 0.0)) * 100.0,
+                    100.0 + BLHash_float2_to_float(float2(seed, 1.0)) * 100.0);
+}
+
+Function BLNoise_rand_offset_3d(in float seed, out float3 result)
+{
+    result = float3(100.0 + BLHash_float2_to_float(float2(seed, 0.0)) * 100.0,
+                    100.0 + BLHash_float2_to_float(float2(seed, 1.0)) * 100.0,
+                    100.0 + BLHash_float2_to_float(float2(seed, 2.0)) * 100.0);
+}
+
+Function BLNoise_rand_offset_4d(in float seed, out float4 result)
+{
+    result = float4(100.0 + BLHash_float2_to_float(float2(seed, 0.0)) * 100.0,
+                    100.0 + BLHash_float2_to_float(float2(seed, 1.0)) * 100.0,
+                    100.0 + BLHash_float2_to_float(float2(seed, 2.0)) * 100.0,
+                    100.0 + BLHash_float2_to_float(float2(seed, 3.0)) * 100.0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Public API — the Noise Texture node
+//
+// One entry point per dimension, mirroring the node's Dimensions dropdown. Inputs are in the
+// node's own order: the coordinate first, then Scale, Detail, Roughness, Lacunarity, Distortion.
+// Outputs are Fac then Color, as on the node.
+//
+// Both outputs are always computed. Upstream skips Color when nothing is connected; here the
+// HLSL compiler's dead-code elimination does the same job, because Fac and Color are separate
+// outputs of the generated node.
+// ---------------------------------------------------------------------------------------------
+
+Namespace(Name = "BL")
+{
+    Function TexNoise1D(in float w, in float scale, in float detail, in float roughness,
+                        in float lacunarity, in float distortion, in float normalize01,
+                        out float fac, out float3 color)
+    {
+        float d = clamp(detail, 0.0, 15.0);
+        float r = max(roughness, 0.0);
+
+        float p = w * scale;
+        if (distortion != 0.0) {
+            float o0 = BLNoise_rand_offset_1d(0.0);
+            float n0 = BLNoise_snoise_1d(p + o0);
+            p += n0 * distortion;
+        }
+
+        fac = BLNoise_fbm_1d(p, d, r, lacunarity, normalize01);
+
+        float oc1 = BLNoise_rand_offset_1d(1.0);
+        float oc2 = BLNoise_rand_offset_1d(2.0);
+        float c1 = BLNoise_fbm_1d(p + oc1, d, r, lacunarity, normalize01);
+        float c2 = BLNoise_fbm_1d(p + oc2, d, r, lacunarity, normalize01);
+        color = float3(fac, c1, c2);
+    }
+
+    Function TexNoise2D(in float2 co, in float scale, in float detail, in float roughness,
+                        in float lacunarity, in float distortion, in float normalize01,
+                        out float fac, out float3 color)
+    {
+        float d = clamp(detail, 0.0, 15.0);
+        float r = max(roughness, 0.0);
+
+        float2 p = co * scale;
+        if (distortion != 0.0) {
+            float2 o0 = BLNoise_rand_offset_2d(0.0);
+            float2 o1 = BLNoise_rand_offset_2d(1.0);
+            float n0 = BLNoise_snoise_2d(p + o0);
+            float n1 = BLNoise_snoise_2d(p + o1);
+            p += float2(n0 * distortion, n1 * distortion);
+        }
+
+        fac = BLNoise_fbm_2d(p, d, r, lacunarity, normalize01);
+
+        float2 oc1 = BLNoise_rand_offset_2d(2.0);
+        float2 oc2 = BLNoise_rand_offset_2d(3.0);
+        float c1 = BLNoise_fbm_2d(p + oc1, d, r, lacunarity, normalize01);
+        float c2 = BLNoise_fbm_2d(p + oc2, d, r, lacunarity, normalize01);
+        color = float3(fac, c1, c2);
+    }
+
+    Function TexNoise3D(in float3 co, in float scale, in float detail, in float roughness,
+                        in float lacunarity, in float distortion, in float normalize01,
+                        out float fac, out float3 color)
+    {
+        float d = clamp(detail, 0.0, 15.0);
+        float r = max(roughness, 0.0);
+
+        float3 p = co * scale;
+        if (distortion != 0.0) {
+            float3 o0 = BLNoise_rand_offset_3d(0.0);
+            float3 o1 = BLNoise_rand_offset_3d(1.0);
+            float3 o2 = BLNoise_rand_offset_3d(2.0);
+            float n0 = BLNoise_snoise_3d(p + o0);
+            float n1 = BLNoise_snoise_3d(p + o1);
+            float n2 = BLNoise_snoise_3d(p + o2);
+            p += float3(n0 * distortion, n1 * distortion, n2 * distortion);
+        }
+
+        fac = BLNoise_fbm_3d(p, d, r, lacunarity, normalize01);
+
+        float3 oc1 = BLNoise_rand_offset_3d(3.0);
+        float3 oc2 = BLNoise_rand_offset_3d(4.0);
+        float c1 = BLNoise_fbm_3d(p + oc1, d, r, lacunarity, normalize01);
+        float c2 = BLNoise_fbm_3d(p + oc2, d, r, lacunarity, normalize01);
+        color = float3(fac, c1, c2);
+    }
+
+    Function TexNoise4D(in float3 co, in float w, in float scale, in float detail,
+                        in float roughness, in float lacunarity, in float distortion,
+                        in float normalize01, out float fac, out float3 color)
+    {
+        float d = clamp(detail, 0.0, 15.0);
+        float r = max(roughness, 0.0);
+
+        float4 p = float4(co * scale, w * scale);
+        if (distortion != 0.0) {
+            float4 o0 = BLNoise_rand_offset_4d(0.0);
+            float4 o1 = BLNoise_rand_offset_4d(1.0);
+            float4 o2 = BLNoise_rand_offset_4d(2.0);
+            float4 o3 = BLNoise_rand_offset_4d(3.0);
+            float n0 = BLNoise_snoise_4d(p + o0);
+            float n1 = BLNoise_snoise_4d(p + o1);
+            float n2 = BLNoise_snoise_4d(p + o2);
+            float n3 = BLNoise_snoise_4d(p + o3);
+            p += float4(n0 * distortion, n1 * distortion, n2 * distortion, n3 * distortion);
+        }
+
+        fac = BLNoise_fbm_4d(p, d, r, lacunarity, normalize01);
+
+        float4 oc1 = BLNoise_rand_offset_4d(4.0);
+        float4 oc2 = BLNoise_rand_offset_4d(5.0);
+        float c1 = BLNoise_fbm_4d(p + oc1, d, r, lacunarity, normalize01);
+        float c2 = BLNoise_fbm_4d(p + oc2, d, r, lacunarity, normalize01);
+        color = float3(fac, c1, c2);
+    }
+}

@@ -1,0 +1,153 @@
+// Jenkins lookup3 integer hashes, ported from Cycles `intern/cycles/util/hash.h`.
+//
+// These are the exact hashes Blender's procedural textures are built on. Every value here is
+// bit-for-bit identical to the Cycles CPU/GPU kernel, which is what makes a golden-image
+// comparison against a Blender render possible at all.
+//
+// Upstream: SPDX-FileCopyrightText 2011-2022 Blender Foundation, SPDX-License-Identifier Apache-2.0
+// See NOTICE at the repository root.
+//
+// Naming: everything here is a top-level `BLHash_*` helper rather than a namespaced one, because
+// a namespace-qualified call inside another Function body is not rewritten by the code generator.
+// Only public entry points live in a namespace; internals stay unqualified so siblings can call
+// them. Do not rename without re-reading Docs/generation/generated-hlsl.md.
+
+// [0, uint_max] -> [0.0, 1.0]
+//
+// Upstream is `(float)n * (1.0f / (float)0xFFFFFFFFu)`. Note that `(float)0xFFFFFFFFu` rounds up
+// to 4294967296.0f, so the reciprocal is exactly 2^-32 — spelling the constant that way here keeps
+// the result bit-identical instead of merely close.
+Function BLHash_uint_to_float_incl(in uint n, out float result)
+{
+    result = float(n) * (1.0 / 4294967296.0);
+}
+
+Function BLHash_uint1(in uint kx, out uint result)
+{
+    uint a = 0xdeadbeefu + 17u;  // 0xdeadbeef + (1 << 2) + 13
+    uint b = a;
+    uint c = a;
+
+    a += kx;
+
+    // final(a, b, c)
+    c ^= b; c -= (b << 14u) | (b >> 18u);
+    a ^= c; a -= (c << 11u) | (c >> 21u);
+    b ^= a; b -= (a << 25u) | (a >>  7u);
+    c ^= b; c -= (b << 16u) | (b >> 16u);
+    a ^= c; a -= (c <<  4u) | (c >> 28u);
+    b ^= a; b -= (a << 14u) | (a >> 18u);
+    c ^= b; c -= (b << 24u) | (b >>  8u);
+
+    result = c;
+}
+
+Function BLHash_uint2(in uint kx, in uint ky, out uint result)
+{
+    uint a = 0xdeadbeefu + 21u;  // 0xdeadbeef + (2 << 2) + 13
+    uint b = a;
+    uint c = a;
+
+    b += ky;
+    a += kx;
+
+    // final(a, b, c)
+    c ^= b; c -= (b << 14u) | (b >> 18u);
+    a ^= c; a -= (c << 11u) | (c >> 21u);
+    b ^= a; b -= (a << 25u) | (a >>  7u);
+    c ^= b; c -= (b << 16u) | (b >> 16u);
+    a ^= c; a -= (c <<  4u) | (c >> 28u);
+    b ^= a; b -= (a << 14u) | (a >> 18u);
+    c ^= b; c -= (b << 24u) | (b >>  8u);
+
+    result = c;
+}
+
+Function BLHash_uint3(in uint kx, in uint ky, in uint kz, out uint result)
+{
+    uint a = 0xdeadbeefu + 25u;  // 0xdeadbeef + (3 << 2) + 13
+    uint b = a;
+    uint c = a;
+
+    c += kz;
+    b += ky;
+    a += kx;
+
+    // final(a, b, c)
+    c ^= b; c -= (b << 14u) | (b >> 18u);
+    a ^= c; a -= (c << 11u) | (c >> 21u);
+    b ^= a; b -= (a << 25u) | (a >>  7u);
+    c ^= b; c -= (b << 16u) | (b >> 16u);
+    a ^= c; a -= (c <<  4u) | (c >> 28u);
+    b ^= a; b -= (a << 14u) | (a >> 18u);
+    c ^= b; c -= (b << 24u) | (b >>  8u);
+
+    result = c;
+}
+
+Function BLHash_uint4(in uint kx, in uint ky, in uint kz, in uint kw, out uint result)
+{
+    uint a = 0xdeadbeefu + 29u;  // 0xdeadbeef + (4 << 2) + 13
+    uint b = a;
+    uint c = a;
+
+    a += kx;
+    b += ky;
+    c += kz;
+
+    // mix(a, b, c) — spelled out because the upstream macro name collides with the
+    // GLSL-to-HLSL identifier rewrite applied to Function bodies (`mix` becomes `lerp`).
+    a -= c; a ^= (c <<  4u) | (c >> 28u); c += b;
+    b -= a; b ^= (a <<  6u) | (a >> 26u); a += c;
+    c -= b; c ^= (b <<  8u) | (b >> 24u); b += a;
+    a -= c; a ^= (c << 16u) | (c >> 16u); c += b;
+    b -= a; b ^= (a << 19u) | (a >> 13u); a += c;
+    c -= b; c ^= (b <<  4u) | (b >> 28u); b += a;
+
+    a += kw;
+
+    // final(a, b, c)
+    c ^= b; c -= (b << 14u) | (b >> 18u);
+    a ^= c; a -= (c << 11u) | (c >> 21u);
+    b ^= a; b -= (a << 25u) | (a >>  7u);
+    c ^= b; c -= (b << 16u) | (b >> 16u);
+    a ^= c; a -= (c <<  4u) | (c >> 28u);
+    b ^= a; b -= (a << 14u) | (a >> 18u);
+    c ^= b; c -= (b << 24u) | (b >>  8u);
+
+    result = c;
+}
+
+// Hashing a float or float2 into a float in the range [0, 1].
+//
+// Upstream reinterprets the float's bits (`__float_as_uint`), it does not convert the value —
+// `asuint` is the HLSL spelling of the same reinterpretation.
+//
+// Every call below is hoisted into its own local. A call to a sibling Function may NOT appear
+// inside another sibling call's argument list: the generator rewrites only the outermost call in
+// an expression and leaves everything in its arguments untouched, which emits a reference to an
+// undefined `BLHash_uint1(...)`. Nesting inside an HLSL intrinsic or constructor is fine — it is
+// specifically sibling-inside-sibling that breaks. See README.md, "Porting rules".
+Function BLHash_float1_to_float(in float k, out float result)
+{
+    uint h = BLHash_uint1(asuint(k));
+    result = BLHash_uint_to_float_incl(h);
+}
+
+Function BLHash_float2_to_float(in float2 k, out float result)
+{
+    uint h = BLHash_uint2(asuint(k.x), asuint(k.y));
+    result = BLHash_uint_to_float_incl(h);
+}
+
+Function BLHash_float3_to_float(in float3 k, out float result)
+{
+    uint h = BLHash_uint3(asuint(k.x), asuint(k.y), asuint(k.z));
+    result = BLHash_uint_to_float_incl(h);
+}
+
+Function BLHash_float4_to_float(in float4 k, out float result)
+{
+    uint h = BLHash_uint4(asuint(k.x), asuint(k.y), asuint(k.z), asuint(k.w));
+    result = BLHash_uint_to_float_incl(h);
+}
