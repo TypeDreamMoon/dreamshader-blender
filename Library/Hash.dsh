@@ -17,13 +17,18 @@
 // Upstream is `(float)n * (1.0f / (float)0xFFFFFFFFu)`. Note that `(float)0xFFFFFFFFu` rounds up
 // to 4294967296.0f, so the reciprocal is exactly 2^-32 — spelling the constant that way here keeps
 // the result bit-identical instead of merely close.
-Function BLHash_uint_to_float_incl(in uint n, out float result)
+/// @custom
+float BLHash_uint_to_float_incl(uint n)
 {
+    float result = (float)0;
     result = float(n) * (1.0 / 4294967296.0);
+    return result;
 }
 
-Function BLHash_uint1(in uint kx, out uint result)
+/// @custom
+uint BLHash_uint1(uint kx)
 {
+    uint result = (uint)0;
     uint a = 0xdeadbeefu + 17u;  // 0xdeadbeef + (1 << 2) + 13
     uint b = a;
     uint c = a;
@@ -40,10 +45,13 @@ Function BLHash_uint1(in uint kx, out uint result)
     c ^= b; c -= (b << 24u) | (b >>  8u);
 
     result = c;
+    return result;
 }
 
-Function BLHash_uint2(in uint kx, in uint ky, out uint result)
+/// @custom
+uint BLHash_uint2(uint kx, uint ky)
 {
+    uint result = (uint)0;
     uint a = 0xdeadbeefu + 21u;  // 0xdeadbeef + (2 << 2) + 13
     uint b = a;
     uint c = a;
@@ -61,10 +69,13 @@ Function BLHash_uint2(in uint kx, in uint ky, out uint result)
     c ^= b; c -= (b << 24u) | (b >>  8u);
 
     result = c;
+    return result;
 }
 
-Function BLHash_uint3(in uint kx, in uint ky, in uint kz, out uint result)
+/// @custom
+uint BLHash_uint3(uint kx, uint ky, uint kz)
 {
+    uint result = (uint)0;
     uint a = 0xdeadbeefu + 25u;  // 0xdeadbeef + (3 << 2) + 13
     uint b = a;
     uint c = a;
@@ -83,10 +94,13 @@ Function BLHash_uint3(in uint kx, in uint ky, in uint kz, out uint result)
     c ^= b; c -= (b << 24u) | (b >>  8u);
 
     result = c;
+    return result;
 }
 
-Function BLHash_uint4(in uint kx, in uint ky, in uint kz, in uint kw, out uint result)
+/// @custom
+uint BLHash_uint4(uint kx, uint ky, uint kz, uint kw)
 {
+    uint result = (uint)0;
     uint a = 0xdeadbeefu + 29u;  // 0xdeadbeef + (4 << 2) + 13
     uint b = a;
     uint c = a;
@@ -116,6 +130,7 @@ Function BLHash_uint4(in uint kx, in uint ky, in uint kz, in uint kw, out uint r
     c ^= b; c -= (b << 24u) | (b >>  8u);
 
     result = c;
+    return result;
 }
 
 // Hashing a float or float2 into a float in the range [0, 1].
@@ -128,28 +143,40 @@ Function BLHash_uint4(in uint kx, in uint ky, in uint kz, in uint kw, out uint r
 // an expression and leaves everything in its arguments untouched, which emits a reference to an
 // undefined `BLHash_uint1(...)`. Nesting inside an HLSL intrinsic or constructor is fine — it is
 // specifically sibling-inside-sibling that breaks. See README.md, "Porting rules".
-Function BLHash_float1_to_float(in float k, out float result)
+/// @custom
+float BLHash_float1_to_float(float k)
 {
+    float result = (float)0;
     uint h = BLHash_uint1(asuint(k));
     result = BLHash_uint_to_float_incl(h);
+    return result;
 }
 
-Function BLHash_float2_to_float(in float2 k, out float result)
+/// @custom
+float BLHash_float2_to_float(float2 k)
 {
+    float result = (float)0;
     uint h = BLHash_uint2(asuint(k.x), asuint(k.y));
     result = BLHash_uint_to_float_incl(h);
+    return result;
 }
 
-Function BLHash_float3_to_float(in float3 k, out float result)
+/// @custom
+float BLHash_float3_to_float(float3 k)
 {
+    float result = (float)0;
     uint h = BLHash_uint3(asuint(k.x), asuint(k.y), asuint(k.z));
     result = BLHash_uint_to_float_incl(h);
+    return result;
 }
 
-Function BLHash_float4_to_float(in float4 k, out float result)
+/// @custom
+float BLHash_float4_to_float(float4 k)
 {
+    float result = (float)0;
     uint h = BLHash_uint4(asuint(k.x), asuint(k.y), asuint(k.z), asuint(k.w));
     result = BLHash_uint_to_float_incl(h);
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -164,8 +191,10 @@ Function BLHash_float4_to_float(in float4 k, out float result)
 // overflow-ignoring. HLSL int arithmetic already wraps.
 // ---------------------------------------------------------------------------------------------
 
-Function BLHash_pcg2d_i(in int2 k, out int2 result)
+/// @custom
+int2 BLHash_pcg2d_i(int2 k)
 {
+    int2 result = (int2)0;
     int2 v = k * 1664525 + 1013904223;
     v.x += v.y * 1664525;
     v.y += v.x * 1664525;
@@ -173,10 +202,13 @@ Function BLHash_pcg2d_i(in int2 k, out int2 result)
     v.x += v.y * 1664525;
     v.y += v.x * 1664525;
     result = v & 0x7FFFFFFF;
+    return result;
 }
 
-Function BLHash_pcg3d_i(in int3 k, out int3 result)
+/// @custom
+int3 BLHash_pcg3d_i(int3 k)
 {
+    int3 result = (int3)0;
     int3 v = k * 1664525 + 1013904223;
     v.x += v.y * v.z;
     v.y += v.z * v.x;
@@ -186,10 +218,13 @@ Function BLHash_pcg3d_i(in int3 k, out int3 result)
     v.y += v.z * v.x;
     v.z += v.x * v.y;
     result = v & 0x7FFFFFFF;
+    return result;
 }
 
-Function BLHash_pcg4d_i(in int4 k, out int4 result)
+/// @custom
+int4 BLHash_pcg4d_i(int4 k)
 {
+    int4 result = (int4)0;
     int4 v = k * 1664525 + 1013904223;
     v.x += v.y * v.w;
     v.y += v.z * v.x;
@@ -201,36 +236,52 @@ Function BLHash_pcg4d_i(in int4 k, out int4 result)
     v.z += v.x * v.y;
     v.w += v.y * v.z;
     result = v & 0x7FFFFFFF;
+    return result;
 }
 
 // The divisor is 2^31, not 0x7FFFFFFF: upstream divides by `(float)0x7FFFFFFFu`, which rounds up.
-Function BLHash_int2_to_float2(in int2 k, out float2 result)
+/// @custom
+float2 BLHash_int2_to_float2(int2 k)
 {
+    float2 result = (float2)0;
     int2 h = BLHash_pcg2d_i(k);
     result = float2(float(h.x), float(h.y)) * (1.0 / 2147483648.0);
+    return result;
 }
 
-Function BLHash_int3_to_float3(in int3 k, out float3 result)
+/// @custom
+float3 BLHash_int3_to_float3(int3 k)
 {
+    float3 result = (float3)0;
     int3 h = BLHash_pcg3d_i(k);
     result = float3(float(h.x), float(h.y), float(h.z)) * (1.0 / 2147483648.0);
+    return result;
 }
 
-Function BLHash_int4_to_float4(in int4 k, out float4 result)
+/// @custom
+float4 BLHash_int4_to_float4(int4 k)
 {
+    float4 result = (float4)0;
     int4 h = BLHash_pcg4d_i(k);
     result = float4(float(h.x), float(h.y), float(h.z), float(h.w)) * (1.0 / 2147483648.0);
+    return result;
 }
 
-Function BLHash_int2_to_float3(in int2 k, out float3 result)
+/// @custom
+float3 BLHash_int2_to_float3(int2 k)
 {
+    float3 result = (float3)0;
     result = BLHash_int3_to_float3(int3(k.x, k.y, 0));
+    return result;
 }
 
-Function BLHash_int4_to_float3(in int4 k, out float3 result)
+/// @custom
+float3 BLHash_int4_to_float3(int4 k)
 {
+    float3 result = (float3)0;
     float4 h = BLHash_int4_to_float4(k);
     result = h.xyz;
+    return result;
 }
 
 // Hashing a float or floatN into a float3 of components in [0, 1].
@@ -238,50 +289,68 @@ Function BLHash_int4_to_float3(in int4 k, out float3 result)
 // The component recipes look arbitrary because they are: upstream keeps this exact behaviour to
 // stay reproducible in OSL, which has neither bit casts nor unsigned integers. A "cleaner" set of
 // seeds would be a different texture.
-Function BLHash_float1_to_float3(in float k, out float3 result)
+/// @custom
+float3 BLHash_float1_to_float3(float k)
 {
+    float3 result = (float3)0;
     float a = BLHash_float1_to_float(k);
     float b = BLHash_float2_to_float(float2(k, 1.0));
     float c = BLHash_float2_to_float(float2(k, 2.0));
     result = float3(a, b, c);
+    return result;
 }
 
-Function BLHash_float2_to_float3(in float2 k, out float3 result)
+/// @custom
+float3 BLHash_float2_to_float3(float2 k)
 {
+    float3 result = (float3)0;
     float a = BLHash_float2_to_float(k);
     float b = BLHash_float3_to_float(float3(k.x, k.y, 1.0));
     float c = BLHash_float3_to_float(float3(k.x, k.y, 2.0));
     result = float3(a, b, c);
+    return result;
 }
 
-Function BLHash_float3_to_float3(in float3 k, out float3 result)
+/// @custom
+float3 BLHash_float3_to_float3(float3 k)
 {
+    float3 result = (float3)0;
     float a = BLHash_float3_to_float(k);
     float b = BLHash_float4_to_float(float4(k.x, k.y, k.z, 1.0));
     float c = BLHash_float4_to_float(float4(k.x, k.y, k.z, 2.0));
     result = float3(a, b, c);
+    return result;
 }
 
-Function BLHash_float4_to_float3(in float4 k, out float3 result)
+/// @custom
+float3 BLHash_float4_to_float3(float4 k)
 {
+    float3 result = (float3)0;
     float a = BLHash_float4_to_float(k);
     float b = BLHash_float4_to_float(float4(k.z, k.x, k.w, k.y));
     float c = BLHash_float4_to_float(float4(k.w, k.z, k.y, k.x));
     result = float3(a, b, c);
+    return result;
 }
 
 // Hashing a floatN into a float2 of components in [0, 1]. Same arbitrary-looking component
 // recipes, same reason.
-Function BLHash_float3_to_float2(in float3 k, out float2 result)
+/// @custom
+float2 BLHash_float3_to_float2(float3 k)
 {
+    float2 result = (float2)0;
     float a = BLHash_float3_to_float(k);
     float b = BLHash_float3_to_float(float3(k.z, k.x, k.y));
     result = float2(a, b);
+    return result;
 }
 
-Function BLHash_float4_to_float2(in float4 k, out float2 result)
+/// @custom
+float2 BLHash_float4_to_float2(float4 k)
 {
+    float2 result = (float2)0;
     float a = BLHash_float4_to_float(k);
     float b = BLHash_float4_to_float(float4(k.z, k.x, k.w, k.y));
     result = float2(a, b);
+    return result;
 }

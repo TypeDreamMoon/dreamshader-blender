@@ -14,12 +14,12 @@
 // The distortion term runs fBM at a fixed lacunarity of 2.0 with Normalize on. That is upstream's
 // hard-coding, not an omission.
 
-import "Noise.dsh";
+#include "Noise.dsh"
 
-Function BLWave_fac(in float3 p, in float type, in float direction, in float profile,
-                        in float distortion, in float detail, in float dscale,
-                        in float droughness, in float phase, out float result)
+/// @custom
+float BLWave_fac(float3 p, float type, float direction, float profile, float distortion, float detail, float dscale, float droughness, float phase)
 {
+    float result = (float)0;
     // Same unit-coordinate nudge as Checker.
     float3 q = (p + 0.000001) * 0.999999;
 
@@ -60,17 +60,14 @@ Function BLWave_fac(in float3 p, in float type, in float direction, in float pro
         float nt = n / 6.28318530717958648;
         result = abs(nt - floor(nt + 0.5)) * 2.0;
     }
+    return result;
 }
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::TexWave
+void BL_TexWave(float3 co, float scale, float distortion, float detail, float detailScale, float detailRoughness, float phase, float type, float direction, float profile, out float fac, out float3 color)
 {
-    Function TexWave(in float3 co, in float scale, in float distortion, in float detail,
-                     in float detailScale, in float detailRoughness, in float phase,
-                     in float type, in float direction, in float profile,
-                     out float fac, out float3 color)
-    {
-        fac = BLWave_fac(co * scale, type, direction, profile, distortion, detail,
-                         detailScale, detailRoughness, phase);
-        color = float3(fac, fac, fac);
-    }
+    fac = BLWave_fac(co * scale, type, direction, profile, distortion, detail,
+                     detailScale, detailRoughness, phase);
+    color = float3(fac, fac, fac);
 }

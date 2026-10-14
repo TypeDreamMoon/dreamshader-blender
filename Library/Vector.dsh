@@ -7,7 +7,7 @@
 // Blender's space, and the result has to go back through the same conversion before it means
 // anything to Unreal. See Space.dsh.
 
-import "Hash.dsh";
+#include "Hash.dsh"
 
 // ---------------------------------------------------------------------------------------------
 // Euler rotation
@@ -16,8 +16,10 @@ import "Hash.dsh";
 // DreamShaderLang has no matrix type. The rows are upstream's `t.x`, `t.y`, `t.z`.
 // ---------------------------------------------------------------------------------------------
 
-Function BLVector_euler_rows(in float3 euler, out float3 rowX, out float3 rowY, out float3 rowZ)
+/// @custom
+float3 BLVector_euler_rows(float3 euler, out float3 rowY, out float3 rowZ)
 {
+    float3 rowX = (float3)0;
     float cx = cos(euler.x);
     float cy = cos(euler.y);
     float cz = cos(euler.z);
@@ -28,26 +30,32 @@ Function BLVector_euler_rows(in float3 euler, out float3 rowX, out float3 rowY, 
     rowX = float3(cy * cz, sy * sx * cz - cx * sz, sy * cx * cz + sx * sz);
     rowY = float3(cy * sz, sy * sx * sz + cx * cz, sy * cx * sz - sx * cz);
     rowZ = float3(-sy, cy * sx, cy * cx);
+    return rowX;
 }
 
-Function BLVector_transform_dir(in float3 rowX, in float3 rowY, in float3 rowZ, in float3 a,
-                        out float3 result)
+/// @custom
+float3 BLVector_transform_dir(float3 rowX, float3 rowY, float3 rowZ, float3 a)
 {
+    float3 result = (float3)0;
     result = float3(dot(a, rowX), dot(a, rowY), dot(a, rowZ));
+    return result;
 }
 
-Function BLVector_transform_dir_transposed(in float3 rowX, in float3 rowY, in float3 rowZ,
-                        in float3 a, out float3 result)
+/// @custom
+float3 BLVector_transform_dir_transposed(float3 rowX, float3 rowY, float3 rowZ, float3 a)
 {
+    float3 result = (float3)0;
     float3 cx = float3(rowX.x, rowY.x, rowZ.x);
     float3 cy = float3(rowX.y, rowY.y, rowZ.y);
     float3 cz = float3(rowX.z, rowY.z, rowZ.z);
     result = float3(dot(a, cx), dot(a, cy), dot(a, cz));
+    return result;
 }
 
-Function BLVector_rotate_around_axis(in float3 p, in float3 axis, in float angle,
-                        out float3 result)
+/// @custom
+float3 BLVector_rotate_around_axis(float3 p, float3 axis, float angle)
 {
+    float3 result = (float3)0;
     float c = cos(angle);
     float s = sin(angle);
     float t = 1.0 - c;
@@ -63,113 +71,122 @@ Function BLVector_rotate_around_axis(in float3 p, in float3 axis, in float angle
                ((c + t * axis.z * axis.z) * p.z);
 
     result = float3(rx, ry, rz);
+    return result;
 }
 
-Function BLVector_safe_divide3(in float3 a, in float3 b, out float3 result)
+/// @custom
+float3 BLVector_safe_divide3(float3 a, float3 b)
 {
+    float3 result = (float3)0;
     result = float3((b.x != 0.0) ? a.x / b.x : 0.0,
                     (b.y != 0.0) ? a.y / b.y : 0.0,
                     (b.z != 0.0) ? a.z / b.z : 0.0);
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------------------------
 
-Namespace(Name = "BL")
+// Mapping `type`: 0 Point | 1 Texture | 2 Vector | 3 Normal
+//
+// The four are not variations on a theme. Point applies scale, then rotation, then location.
+// Texture is its inverse — subtract location, rotate back, divide by scale — which is why a
+// Texture mapping node with the same values undoes a Point one. Vector skips the location
+// entirely, and Normal divides by scale before rotating and renormalises.
+/// @custom
+/// @name BL::Mapping
+void BL_Mapping(float type, float3 vec, float3 location, float3 rotation, float3 scale, out float3 result)
 {
-    // Mapping `type`: 0 Point | 1 Texture | 2 Vector | 3 Normal
-    //
-    // The four are not variations on a theme. Point applies scale, then rotation, then location.
-    // Texture is its inverse — subtract location, rotate back, divide by scale — which is why a
-    // Texture mapping node with the same values undoes a Point one. Vector skips the location
-    // entirely, and Normal divides by scale before rotating and renormalises.
-    Function Mapping(in float type, in float3 vec, in float3 location, in float3 rotation,
-                     in float3 scale, out float3 result)
-    {
+    float3 rx;
+    float3 ry;
+    float3 rz;
+    rx = BLVector_euler_rows(rotation, ry, rz);
+
+    int t = int(type);
+    if (t == 0) {
+        float3 d = BLVector_transform_dir(rx, ry, rz, vec * scale);
+        result = d + location;
+    }
+    else if (t == 1) {
+        float3 d = BLVector_transform_dir_transposed(rx, ry, rz, vec - location);
+        result = BLVector_safe_divide3(d, scale);
+    }
+    else if (t == 2) {
+        result = BLVector_transform_dir(rx, ry, rz, vec * scale);
+    }
+    else {
+        float3 sd = BLVector_safe_divide3(vec, scale);
+        float3 d = BLVector_transform_dir(rx, ry, rz, sd);
+        float len = length(d);
+        result = (len != 0.0) ? (d * (1.0 / len)) : d;
+    }
+}
+
+// Vector Rotate `type`: 0 Axis Angle | 1 X Axis | 2 Y Axis | 3 Z Axis | 4 Euler XYZ
+/// @custom
+/// @name BL::VectorRotate
+void BL_VectorRotate(float type, float3 vec, float3 center, float3 axis, float angle, float3 rotation, float invert, out float3 result)
+{
+    int t = int(type);
+
+    if (t == 4) {
         float3 rx;
         float3 ry;
         float3 rz;
-        BLVector_euler_rows(rotation, rx, ry, rz);
-
-        int t = int(type);
-        if (t == 0) {
-            float3 d = BLVector_transform_dir(rx, ry, rz, vec * scale);
-            result = d + location;
-        }
-        else if (t == 1) {
-            float3 d = BLVector_transform_dir_transposed(rx, ry, rz, vec - location);
-            result = BLVector_safe_divide3(d, scale);
-        }
-        else if (t == 2) {
-            result = BLVector_transform_dir(rx, ry, rz, vec * scale);
+        rx = BLVector_euler_rows(rotation, ry, rz);
+        if (invert != 0.0) {
+            float3 d = BLVector_transform_dir_transposed(rx, ry, rz, vec - center);
+            result = d + center;
         }
         else {
-            float3 sd = BLVector_safe_divide3(vec, scale);
-            float3 d = BLVector_transform_dir(rx, ry, rz, sd);
-            float len = length(d);
-            result = (len != 0.0) ? (d * (1.0 / len)) : d;
+            float3 d = BLVector_transform_dir(rx, ry, rz, vec - center);
+            result = d + center;
         }
     }
+    else {
+        float3 ax = axis;
+        float axLen = length(axis);
+        if (t == 1)      { ax = float3(1.0, 0.0, 0.0); axLen = 1.0; }
+        else if (t == 2) { ax = float3(0.0, 1.0, 0.0); axLen = 1.0; }
+        else if (t == 3) { ax = float3(0.0, 0.0, 1.0); axLen = 1.0; }
 
-    // Vector Rotate `type`: 0 Axis Angle | 1 X Axis | 2 Y Axis | 3 Z Axis | 4 Euler XYZ
-    Function VectorRotate(in float type, in float3 vec, in float3 center, in float3 axis,
-                          in float angle, in float3 rotation, in float invert, out float3 result)
-    {
-        int t = int(type);
+        float a = (invert != 0.0) ? -angle : angle;
 
-        if (t == 4) {
-            float3 rx;
-            float3 ry;
-            float3 rz;
-            BLVector_euler_rows(rotation, rx, ry, rz);
-            if (invert != 0.0) {
-                float3 d = BLVector_transform_dir_transposed(rx, ry, rz, vec - center);
-                result = d + center;
-            }
-            else {
-                float3 d = BLVector_transform_dir(rx, ry, rz, vec - center);
-                result = d + center;
-            }
+        if (axLen != 0.0) {
+            float3 r = BLVector_rotate_around_axis(vec - center, ax / axLen, a);
+            result = r + center;
         }
         else {
-            float3 ax = axis;
-            float axLen = length(axis);
-            if (t == 1)      { ax = float3(1.0, 0.0, 0.0); axLen = 1.0; }
-            else if (t == 2) { ax = float3(0.0, 1.0, 0.0); axLen = 1.0; }
-            else if (t == 3) { ax = float3(0.0, 0.0, 1.0); axLen = 1.0; }
-
-            float a = (invert != 0.0) ? -angle : angle;
-
-            if (axLen != 0.0) {
-                float3 r = BLVector_rotate_around_axis(vec - center, ax / axLen, a);
-                result = r + center;
-            }
-            else {
-                // A zero-length custom axis is a no-op, not a NaN.
-                result = vec;
-            }
+            // A zero-length custom axis is a no-op, not a NaN.
+            result = vec;
         }
     }
+}
 
-    // The Normal node is a direction widget plus a dot product: it always outputs the direction
-    // it was authored with, and the dot of that against the incoming normal.
-    Function Normal(in float3 direction, in float3 inNormal, out float3 outNormal, out float outDot)
-    {
-        float3 d = normalize(direction);
-        outNormal = d;
-        outDot = dot(d, normalize(inNormal));
-    }
+// The Normal node is a direction widget plus a dot product: it always outputs the direction
+// it was authored with, and the dot of that against the incoming normal.
+/// @custom
+/// @name BL::Normal
+void BL_Normal(float3 direction, float3 inNormal, out float3 outNormal, out float outDot)
+{
+    float3 d = normalize(direction);
+    outNormal = d;
+    outDot = dot(d, normalize(inNormal));
+}
 
-    Function SeparateXYZ(in float3 vec, out float x, out float y, out float z)
-    {
-        x = vec.x;
-        y = vec.y;
-        z = vec.z;
-    }
+/// @custom
+/// @name BL::SeparateXYZ
+void BL_SeparateXYZ(float3 vec, out float x, out float y, out float z)
+{
+    x = vec.x;
+    y = vec.y;
+    z = vec.z;
+}
 
-    Function CombineXYZ(in float x, in float y, in float z, out float3 vec)
-    {
-        vec = float3(x, y, z);
-    }
+/// @custom
+/// @name BL::CombineXYZ
+void BL_CombineXYZ(float x, float y, float z, out float3 vec)
+{
+    vec = float3(x, y, z);
 }

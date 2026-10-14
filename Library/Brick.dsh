@@ -8,20 +8,21 @@
 
 // A small integer noise, unrelated to the Perlin hashes. Upstream keeps it because the brick
 // tints have to stay stable across versions.
-Function BLBrick_noise(in uint n, out float result)
+/// @custom
+float BLBrick_noise(uint n)
 {
+    float result = (float)0;
     uint m = (n + 1013u) & 0x7fffffffu;
     m = (m >> 13u) ^ m;
     uint nn = (m * (m * m * 60493u + 19990303u) + 1376312589u) & 0x7fffffffu;
     result = 0.5 * (float(nn) / 1073741824.0);
+    return result;
 }
 
-Function BLBrick_tint_mortar(in float3 p, in float mortarSize, in float mortarSmooth,
-                        in float bias, in float brickWidth, in float rowHeight,
-                        in float offsetAmount, in float offsetFrequency,
-                        in float squashAmount, in float squashFrequency,
-                        out float tint, out float mortar)
+/// @custom
+float BLBrick_tint_mortar(float3 p, float mortarSize, float mortarSmooth, float bias, float brickWidth, float rowHeight, float offsetAmount, float offsetFrequency, float squashAmount, float squashFrequency, out float mortar)
 {
+    float tint = (float)0;
     float bw = brickWidth;
     float offset = 0.0;
 
@@ -62,31 +63,25 @@ Function BLBrick_tint_mortar(in float3 p, in float mortarSize, in float mortarSm
         float ts = min(max(t / mortarSmooth, 0.0), 1.0);
         mortar = 3.0 * ts * ts - 2.0 * ts * ts * ts;
     }
+    return tint;
 }
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::TexBrick
+void BL_TexBrick(float3 co, float3 color1, float3 color2, float3 mortarColor, float scale, float mortarSize, float mortarSmooth, float bias, float brickWidth, float rowHeight, float offsetAmount, float offsetFrequency, float squashAmount, float squashFrequency, out float fac, out float3 color)
 {
-    Function TexBrick(in float3 co, in float3 color1, in float3 color2, in float3 mortarColor,
-                      in float scale, in float mortarSize, in float mortarSmooth, in float bias,
-                      in float brickWidth, in float rowHeight,
-                      in float offsetAmount, in float offsetFrequency,
-                      in float squashAmount, in float squashFrequency,
-                      out float fac, out float3 color)
-    {
-        float tint;
-        float mortar;
-        BLBrick_tint_mortar(co * scale, mortarSize, mortarSmooth, bias, brickWidth, rowHeight,
-                            offsetAmount, offsetFrequency, squashAmount, squashFrequency,
-                            tint, mortar);
+    float tint;
+    float mortar;
+    tint = BLBrick_tint_mortar(co * scale, mortarSize, mortarSmooth, bias, brickWidth, rowHeight,
+                        offsetAmount, offsetFrequency, squashAmount, squashFrequency, mortar);
 
-        // Upstream skips the tint blend when the pixel is pure mortar, which is a real behaviour
-        // difference and not just an optimisation: at f == 1 the brick colour never contributes.
-        float3 brick = color1;
-        if (mortar != 1.0) {
-            brick = (1.0 - tint) * color1 + tint * color2;
-        }
-
-        color = brick * (1.0 - mortar) + mortarColor * mortar;
-        fac = mortar;
+    // Upstream skips the tint blend when the pixel is pure mortar, which is a real behaviour
+    // difference and not just an optimisation: at f == 1 the brick colour never contributes.
+    float3 brick = color1;
+    if (mortar != 1.0) {
+        brick = (1.0 - tint) * color1 + tint * color2;
     }
+
+    color = brick * (1.0 - mortar) + mortarColor * mortar;
+    fac = mortar;
 }

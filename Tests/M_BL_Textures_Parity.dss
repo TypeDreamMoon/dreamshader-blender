@@ -1,0 +1,406 @@
+// Compile gate for @typedreammoon/dreamshader-blender.
+//
+// A .dsm under DShader/Packages is never compiled by any path, so this file proves nothing where
+// it sits. Copy it into the consuming project's own tree — DShader/Materials/Blender/ by
+// convention — and build that copy.
+//
+// Every public entry point is wired into the output with a non-zero weight so none can be dead-
+// code eliminated. Every dropdown is a parameter rather than a literal on purpose: a dynamic
+// selector forces all of that node's variants through the shader compiler, which is the point of
+// a gate and the opposite of what you want in a real material.
+
+#include "@typedreammoon/dreamshader-blender/Library/Blender.dsh"
+
+#pragma material(Domain = "Surface", ShadingModel = "Unlit")
+
+/// @group Shared | Inputs
+/// @sort 10
+uniform float Scale = 5.0;
+/// @group Shared | Inputs
+/// @sort 20
+uniform float Detail = 2.0;
+/// @group Shared | Inputs
+/// @sort 30
+uniform float Roughness = 0.5;
+/// @group Shared | Inputs
+/// @sort 40
+uniform float Lacunarity = 2.0;
+/// @group Shared | Inputs
+/// @sort 50
+uniform float Distortion = 0.3;
+/// @group Shared | Inputs
+/// @sort 60
+uniform float WCoord = 0.5;
+/// @group Noise | Inputs
+/// @sort 70
+uniform float NoiseOffset = 0.0;
+/// @group Noise | Inputs
+/// @sort 80
+uniform float NoiseGain = 1.0;
+/// @group Noise | Options
+/// @sort 90
+/// @desc 0 fBM, 1 Multifractal, 2 Hybrid, 3 Ridged, 4 Hetero Terrain
+uniform float NoiseType = 0.0;
+// Not named `Normalize`: the 19 math builtins shadow same-named properties inside a
+// Graph block, silently. `normalize` is one of them.
+/// @group Noise | Options
+/// @sort 100
+uniform float NormalizeOutput = 1.0;
+
+/// @group Gradient | Options
+/// @sort 110
+/// @desc 0 Linear .. 6 Radial
+uniform float GradientType = 0.0;
+
+/// @group Wave | Options
+/// @sort 120
+uniform float WaveType = 0.0;
+/// @group Wave | Options
+/// @sort 130
+uniform float WaveDirection = 0.0;
+/// @group Wave | Options
+/// @sort 140
+uniform float WaveProfile = 0.0;
+
+/// @group Magic | Options
+/// @sort 150
+uniform float MagicDepth = 2.0;
+/// @group Voronoi | Inputs
+/// @sort 160
+uniform float VorRandomness = 1.0;
+/// @group Voronoi | Inputs
+/// @sort 170
+uniform float VorSmoothness = 1.0;
+/// @group Voronoi | Inputs
+/// @sort 180
+uniform float VorExponent = 0.5;
+/// @default Path(Engine, "EngineResources/WhiteSquareTexture")
+/// @group Curves | Inputs
+/// @sort 310
+/// @desc 1 x N RGBA LUT holding the baked curve or ramp
+uniform Texture2D CurveLut;
+/// @group Curves | Inputs
+/// @sort 320
+uniform float LutSize = 32.0;
+/// @group Curves | Options
+/// @sort 330
+uniform float CurveExtrapolate = 0.0;
+/// @group Converter | Options
+/// @sort 230
+uniform float MathOp = 0.0;
+/// @group Converter | Options
+/// @sort 240
+uniform float VecMathOp = 0.0;
+/// @group Color | Options
+/// @sort 250
+uniform float MixMode = 0.0;
+/// @group Color | Options
+/// @sort 260
+uniform float SepCombMode = 0.0;
+/// @group Converter | Options
+/// @sort 270
+uniform float MapInterp = 0.0;
+/// @group Vector | Options
+/// @sort 280
+uniform float MappingType = 0.0;
+/// @group Vector | Options
+/// @sort 290
+uniform float RotateType = 0.0;
+/// @group Space | Inputs
+/// @sort 300
+uniform float UnitScale = 100.0;
+/// @group Gabor | Inputs
+/// @sort 200
+uniform float GaborFrequency = 2.0;
+/// @group Gabor | Inputs
+/// @sort 210
+uniform float GaborAnisotropy = 1.0;
+/// @group Gabor | Inputs
+/// @sort 220
+uniform float GaborOrientation = 0.7853982;
+/// @group Voronoi | Options
+/// @sort 190
+/// @desc 0 Euclidean, 1 Manhattan, 2 Chebychev, 3 Minkowski
+uniform float VorMetric = 0.0;
+
+export void M_BL_Textures_Parity(inout material Base)
+{
+    float3 EmissiveColor = float3(0, 0, 0);
+    float2 uv = UE.TexCoord(Index = 0);
+    float3 p = float3(uv.x, uv.y, 0.0);
+    float3 white = float3(1.0, 1.0, 1.0);
+    float3 black = float3(0.0, 0.0, 0.0);
+    float3 grey = float3(0.5, 0.5, 0.5);
+
+    float NFac1;
+    float3 NCol1;
+
+    // Noise Texture — fBM shorthand, all four dimensions.
+    BL::TexNoise1D(uv.x, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput, NFac1, NCol1);
+    float NFac2;
+    float3 NCol2;
+    BL::TexNoise2D(uv, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput, NFac2, NCol2);
+    float NFac3;
+    float3 NCol3;
+    BL::TexNoise3D(p, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput, NFac3, NCol3);
+    float NFac4;
+    float3 NCol4;
+    BL::TexNoise4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput, NFac4, NCol4);
+
+    float TFac1;
+    float3 TCol1;
+
+    // Noise Texture — full node, all four dimensions, dynamic type.
+    BL::TexNoiseTyped1D(uv.x, Scale, Detail, Roughness, Lacunarity, NoiseOffset, NoiseGain, Distortion, NoiseType, NormalizeOutput, TFac1, TCol1);
+    float TFac2;
+    float3 TCol2;
+    BL::TexNoiseTyped2D(uv, Scale, Detail, Roughness, Lacunarity, NoiseOffset, NoiseGain, Distortion, NoiseType, NormalizeOutput, TFac2, TCol2);
+    float TFac3;
+    float3 TCol3;
+    BL::TexNoiseTyped3D(p, Scale, Detail, Roughness, Lacunarity, NoiseOffset, NoiseGain, Distortion, NoiseType, NormalizeOutput, TFac3, TCol3);
+    float TFac4;
+    float3 TCol4;
+    BL::TexNoiseTyped4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, NoiseOffset, NoiseGain, Distortion, NoiseType, NormalizeOutput, TFac4, TCol4);
+
+    float WFac1;
+    float3 WCol1;
+
+    // White Noise, all four dimensions.
+    BL::TexWhiteNoise1D(uv.x, WFac1, WCol1);
+    float WFac2;
+    float3 WCol2;
+    BL::TexWhiteNoise2D(uv, WFac2, WCol2);
+    float WFac3;
+    float3 WCol3;
+    BL::TexWhiteNoise3D(p, WFac3, WCol3);
+    float WFac4;
+    float3 WCol4;
+    BL::TexWhiteNoise4D(p, WCoord, WFac4, WCol4);
+
+    float ChkFac;
+    float3 ChkCol;
+
+    // The single-variant nodes.
+    BL::TexChecker(p, white, black, Scale, ChkFac, ChkCol);
+    float GrdFac;
+    float3 GrdCol;
+    BL::TexGradient(p, GradientType, GrdFac, GrdCol);
+    float MagFac;
+    float3 MagCol;
+    BL::TexMagic(p, Scale, MagicDepth, Distortion, MagFac, MagCol);
+    float WavFac;
+    float3 WavCol;
+    BL::TexWave(p, Scale, Distortion, Detail, Scale, Roughness, WCoord, WaveType, WaveDirection, WaveProfile, WavFac, WavCol);
+    float BrkFac;
+    float3 BrkCol;
+    BL::TexBrick(p, white, grey, black, Scale, 0.02, 0.1, 0.0, 0.5, 0.25, 0.5, 2.0, 1.0, 2.0, BrkFac, BrkCol);
+
+    // Voronoi — every feature, every dimension. Metric stays dynamic.
+    float VAcc = 0.0;
+    float3 VCol = float3(0.0, 0.0, 0.0);
+    float VD1;
+    float3 VC1;
+    float3 VP1;
+    float VW1;
+    BL::TexVoronoiF1_1D(uv.x, Scale, Detail, Roughness, Lacunarity, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD1, VC1, VP1, VW1);
+    VAcc = VAcc + VD1 + VW1;
+    VCol = VCol + VC1 + VP1;
+    float VD2;
+    float3 VC2;
+    float3 VP2;
+    float VW2;
+    BL::TexVoronoiSmoothF1_1D(uv.x, Scale, Detail, Roughness, Lacunarity, VorSmoothness, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD2, VC2, VP2, VW2);
+    VAcc = VAcc + VD2 + VW2;
+    VCol = VCol + VC2 + VP2;
+    float VD3;
+    float3 VC3;
+    float3 VP3;
+    float VW3;
+    BL::TexVoronoiF2_1D(uv.x, Scale, Detail, Roughness, Lacunarity, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD3, VC3, VP3, VW3);
+    VAcc = VAcc + VD3 + VW3;
+    VCol = VCol + VC3 + VP3;
+    float VD4;
+    BL::TexVoronoiDistToEdge_1D(uv.x, Scale, Detail, Roughness, Lacunarity, VorRandomness, NormalizeOutput, VD4);
+    VAcc = VAcc + VD4;
+    float VD5;
+    BL::TexVoronoiRadius_1D(uv.x, Scale, VorRandomness, VD5);
+    VAcc = VAcc + VD5;
+    float VD6;
+    float3 VC6;
+    float3 VP6;
+    float VW6;
+    BL::TexVoronoiF1_2D(uv, Scale, Detail, Roughness, Lacunarity, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD6, VC6, VP6, VW6);
+    VAcc = VAcc + VD6 + VW6;
+    VCol = VCol + VC6 + VP6;
+    float VD7;
+    float3 VC7;
+    float3 VP7;
+    float VW7;
+    BL::TexVoronoiSmoothF1_2D(uv, Scale, Detail, Roughness, Lacunarity, VorSmoothness, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD7, VC7, VP7, VW7);
+    VAcc = VAcc + VD7 + VW7;
+    VCol = VCol + VC7 + VP7;
+    float VD8;
+    float3 VC8;
+    float3 VP8;
+    float VW8;
+    BL::TexVoronoiF2_2D(uv, Scale, Detail, Roughness, Lacunarity, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD8, VC8, VP8, VW8);
+    VAcc = VAcc + VD8 + VW8;
+    VCol = VCol + VC8 + VP8;
+    float VD9;
+    BL::TexVoronoiDistToEdge_2D(uv, Scale, Detail, Roughness, Lacunarity, VorRandomness, NormalizeOutput, VD9);
+    VAcc = VAcc + VD9;
+    float VD10;
+    BL::TexVoronoiRadius_2D(uv, Scale, VorRandomness, VD10);
+    VAcc = VAcc + VD10;
+    float VD11;
+    float3 VC11;
+    float3 VP11;
+    float VW11;
+    BL::TexVoronoiF1_3D(p, Scale, Detail, Roughness, Lacunarity, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD11, VC11, VP11, VW11);
+    VAcc = VAcc + VD11 + VW11;
+    VCol = VCol + VC11 + VP11;
+    float VD12;
+    float3 VC12;
+    float3 VP12;
+    float VW12;
+    BL::TexVoronoiSmoothF1_3D(p, Scale, Detail, Roughness, Lacunarity, VorSmoothness, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD12, VC12, VP12, VW12);
+    VAcc = VAcc + VD12 + VW12;
+    VCol = VCol + VC12 + VP12;
+    float VD13;
+    float3 VC13;
+    float3 VP13;
+    float VW13;
+    BL::TexVoronoiF2_3D(p, Scale, Detail, Roughness, Lacunarity, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD13, VC13, VP13, VW13);
+    VAcc = VAcc + VD13 + VW13;
+    VCol = VCol + VC13 + VP13;
+    float VD14;
+    BL::TexVoronoiDistToEdge_3D(p, Scale, Detail, Roughness, Lacunarity, VorRandomness, NormalizeOutput, VD14);
+    VAcc = VAcc + VD14;
+    float VD15;
+    BL::TexVoronoiRadius_3D(p, Scale, VorRandomness, VD15);
+    VAcc = VAcc + VD15;
+    float VD16;
+    float3 VC16;
+    float3 VP16;
+    float VW16;
+    BL::TexVoronoiF1_4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD16, VC16, VP16, VW16);
+    VAcc = VAcc + VD16 + VW16;
+    VCol = VCol + VC16 + VP16;
+    float VD17;
+    float3 VC17;
+    float3 VP17;
+    float VW17;
+    BL::TexVoronoiSmoothF1_4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, VorSmoothness, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD17, VC17, VP17, VW17);
+    VAcc = VAcc + VD17 + VW17;
+    VCol = VCol + VC17 + VP17;
+    float VD18;
+    float3 VC18;
+    float3 VP18;
+    float VW18;
+    BL::TexVoronoiF2_4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, VorRandomness, VorMetric, VorExponent, NormalizeOutput, VD18, VC18, VP18, VW18);
+    VAcc = VAcc + VD18 + VW18;
+    VCol = VCol + VC18 + VP18;
+    float VD19;
+    BL::TexVoronoiDistToEdge_4D(p, WCoord, Scale, Detail, Roughness, Lacunarity, VorRandomness, NormalizeOutput, VD19);
+    VAcc = VAcc + VD19;
+    float VD20;
+    BL::TexVoronoiRadius_4D(p, WCoord, Scale, VorRandomness, VD20);
+    VAcc = VAcc + VD20;
+
+    // Gabor, both types.
+    float3 gaborDir = float3(0.0, 0.0, 1.0);
+    float GbV2;
+    float GbP2;
+    float GbI2;
+    BL::TexGabor2D(p, Scale, GaborFrequency, GaborAnisotropy, GaborOrientation, GbV2, GbP2, GbI2);
+    float GbV3;
+    float GbP3;
+    float GbI3;
+    BL::TexGabor3D(p, Scale, GaborFrequency, GaborAnisotropy, gaborDir, GbV3, GbP3, GbI3);
+    VAcc = VAcc + GbV2 + GbP2 + GbI2 + GbV3 + GbP3 + GbI3;
+
+    float MathV;
+
+    // Converter / Color / Vector, all dropdowns dynamic.
+    BL::Math(MathOp, uv.x, uv.y, WCoord, 0.0, MathV);
+    float VecMathVal;
+    float3 VecMathVec;
+    BL::VectorMath(VecMathOp, p, grey, white, Scale, VecMathVal, VecMathVec);
+    float MapV;
+    BL::MapRange(uv.x, 0.0, 1.0, -1.0, 2.0, 4.0, MapInterp, 1.0, MapV);
+    float ClampV;
+    BL::Clamp(uv.y, 0.2, 0.8, SepCombMode, ClampV);
+    float3 MixCol;
+    BL::MixColor(MixMode, uv.x, white, grey, 1.0, 1.0, MixCol);
+    float3 BcCol;
+    BL::BrightContrast(grey, uv.x, uv.y, BcCol);
+    float3 GamCol;
+    BL::Gamma(grey, 2.2, GamCol);
+    float3 HsvCol;
+    BL::HueSaturation(grey, uv.x, uv.y, 1.0, 1.0, HsvCol);
+    float3 InvCol;
+    BL::Invert(uv.x, grey, InvCol);
+    float3 SepCol;
+    BL::SeparateColor(grey, SepCombMode, SepCol);
+    float3 CombCol;
+    BL::CombineColor(SepCol, SepCombMode, CombCol);
+    float BwV;
+    BL::RGBToBW(grey, BwV);
+    float3 MapVec;
+    BL::Mapping(MappingType, p, grey, white, float3(2.0, 2.0, 2.0), MapVec);
+    float3 RotVec;
+    BL::VectorRotate(RotateType, p, grey, white, uv.x, white, 0.0, RotVec);
+    float3 NrmVec;
+    float NrmDot;
+    BL::Normal(white, p, NrmVec, NrmDot);
+    float SepX;
+    float SepY;
+    float SepZ;
+    BL::SeparateXYZ(p, SepX, SepY, SepZ);
+    float3 CombVec;
+    BL::CombineXYZ(SepX, SepY, SepZ, CombVec);
+
+    float3 GenCo;
+
+    // Coordinate spaces.
+    BL::CoordGenerated(GenCo);
+    float3 ObjCo;
+    BL::CoordObject(UnitScale, ObjCo);
+    float3 UvCo;
+    BL::CoordUV(0.0, UvCo);
+    float3 NrmCo;
+    BL::CoordNormal(NrmCo);
+    float3 BackCo;
+    BL::ToUnrealPoint(ObjCo, UnitScale, BackCo);
+
+    float3 BbCol;
+
+    // Blackbody, Wavelength and the curve lookups.
+    BL::Blackbody(uv.x * 12000.0, BbCol);
+    float3 WlCol;
+    BL::Wavelength(380.0 + uv.y * 400.0, WlCol);
+    float3 RampCol;
+    float RampA;
+    BL::ColorRamp(CurveLut, uv.x, LutSize, 1.0, RampCol, RampA);
+    float FcV;
+    BL::FloatCurve(CurveLut, 1.0, uv.y, 0.0, 1.0, LutSize, CurveExtrapolate, FcV);
+    float3 RcCol;
+    BL::RGBCurves(CurveLut, 1.0, p, 0.0, 1.0, LutSize, CurveExtrapolate, RcCol);
+
+    float3 curveAcc = BbCol + WlCol + RampCol + RcCol + float3(RampA, FcV, 0.0);
+
+    float3 convAcc = float3(MathV, MapV, ClampV) + float3(VecMathVal, BwV, NrmDot) + VecMathVec + MixCol + BcCol + GamCol + HsvCol + InvCol + CombCol + MapVec + RotVec + NrmVec + CombVec + GenCo + ObjCo + UvCo + NrmCo + BackCo + curveAcc;
+
+    float3 noiseFacs = float3(NFac1, NFac2, NFac4);
+    float3 typedFacs = float3(TFac1, TFac2, TFac4);
+    float3 whiteFacs = float3(WFac1, WFac2, WFac4);
+    float3 otherFacs = float3(ChkFac, GrdFac, MagFac);
+    float3 tailFacs = float3(WavFac, BrkFac, NFac3);
+    float3 restFacs = float3(TFac3, WFac3, NFac3);
+
+    float3 cols = NCol1 + NCol2 + NCol3 + NCol4 + TCol1 + TCol2 + TCol3 + TCol4;
+    float3 cols2 = WCol1 + WCol2 + WCol3 + WCol4 + ChkCol + GrdCol + MagCol + WavCol + BrkCol;
+
+    EmissiveColor = (noiseFacs + typedFacs + whiteFacs + otherFacs + tailFacs + restFacs + cols + cols2 + VCol + float3(VAcc, VAcc, VAcc) + convAcc) * 0.005;
+    Base.EmissiveColor = EmissiveColor;
+}

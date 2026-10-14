@@ -6,19 +6,19 @@
 //
 // Diamond imports are safe — a file already inlined in this translation unit is skipped.
 
-import "Hash.dsh";
-import "Noise.dsh";
-import "WhiteNoise.dsh";
-import "Checker.dsh";
-import "Gradient.dsh";
-import "Magic.dsh";
-import "Wave.dsh";
-import "Brick.dsh";
-import "Voronoi.dsh";
-import "Gabor.dsh";
-import "Math.dsh";
-import "Color.dsh";
-import "Vector.dsh";
-import "Space.dsh";
-import "Tables.dsh";
-import "Curves.dsh";
+#include "Hash.dsh"
+#include "Noise.dsh"
+#include "WhiteNoise.dsh"
+#include "Checker.dsh"
+#include "Gradient.dsh"
+#include "Magic.dsh"
+#include "Wave.dsh"
+#include "Brick.dsh"
+#include "Voronoi.dsh"
+#include "Gabor.dsh"
+#include "Math.dsh"
+#include "Color.dsh"
+#include "Vector.dsh"
+#include "Space.dsh"
+#include "Tables.dsh"
+#include "Curves.dsh"

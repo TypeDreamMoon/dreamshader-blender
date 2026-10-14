@@ -18,15 +18,16 @@
 // them. Pick the entry point you want; use a StaticSwitchParameter if you need to choose in a
 // material instance.
 
-import "Hash.dsh";
+#include "Hash.dsh"
 
 // ---------------------------------------------------------------------------------------------
 // 1D
 // ---------------------------------------------------------------------------------------------
 
-Function BLVor_f1_1(in float coord, in float randomness, in float metric, in float exponent,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_f1_1(float coord, float randomness, float metric, float exponent, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float cellPosition = floor(coord);
     float localPosition = coord - cellPosition;
 
@@ -51,12 +52,13 @@ Function BLVor_f1_1(in float coord, in float randomness, in float metric, in flo
     outDistance = minDistance;
     outColor = BLHash_float1_to_float3(cellPosition + targetOffset);
     outPosition = float4(0.0, 0.0, 0.0, targetPosition + cellPosition);
+    return outDistance;
 }
 
-Function BLVor_smooth_f1_1(in float coord, in float randomness, in float metric,
-                        in float exponent, in float smoothness,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_smooth_f1_1(float coord, float randomness, float metric, float exponent, float smoothness, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float cellPosition = floor(coord);
     float localPosition = coord - cellPosition;
 
@@ -83,11 +85,13 @@ Function BLVor_smooth_f1_1(in float coord, in float randomness, in float metric,
     outDistance = smoothDistance;
     outColor = smoothColor;
     outPosition = float4(0.0, 0.0, 0.0, cellPosition + smoothPosition);
+    return outDistance;
 }
 
-Function BLVor_f2_1(in float coord, in float randomness, in float metric, in float exponent,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_f2_1(float coord, float randomness, float metric, float exponent, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float cellPosition = floor(coord);
     float localPosition = coord - cellPosition;
 
@@ -121,12 +125,15 @@ Function BLVor_f2_1(in float coord, in float randomness, in float metric, in flo
     outDistance = distanceF2;
     outColor = BLHash_float1_to_float3(cellPosition + offsetF2);
     outPosition = float4(0.0, 0.0, 0.0, positionF2 + cellPosition);
+    return outDistance;
 }
 
 // Closed form in 1D: there are only two bisectors to consider, so upstream skips the loop the
 // other dimensions need.
-Function BLVor_dist_to_edge_1(in float coord, in float randomness, out float result)
+/// @custom
+float BLVor_dist_to_edge_1(float coord, float randomness)
 {
+    float result = (float)0;
     float cellPosition = floor(coord);
     float localPosition = coord - cellPosition;
 
@@ -142,10 +149,13 @@ Function BLVor_dist_to_edge_1(in float coord, in float randomness, out float res
     float distanceToMidRight = abs((midPointPosition + rightPointPosition) / 2.0 - localPosition);
 
     result = min(distanceToMidLeft, distanceToMidRight);
+    return result;
 }
 
-Function BLVor_n_sphere_radius_1(in float coord, in float randomness, out float result)
+/// @custom
+float BLVor_n_sphere_radius_1(float coord, float randomness)
 {
+    float result = (float)0;
     float cellPosition = floor(coord);
     float localPosition = coord - cellPosition;
 
@@ -182,6 +192,7 @@ Function BLVor_n_sphere_radius_1(in float coord, in float randomness, out float 
     }
 
     result = abs(closestToClosest - closestPoint) / 2.0;
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -191,9 +202,10 @@ Function BLVor_n_sphere_radius_1(in float coord, in float randomness, out float 
 // Metric-aware distance. Minkowski with exponent 1 is Manhattan and with 2 is Euclidean, but the
 // dedicated branches are kept because upstream keeps them — pow() is not bit-identical to the
 // closed forms.
-Function BLVor_distance_2(in float2 a, in float2 b, in float metric, in float exponent,
-                        out float result)
+/// @custom
+float BLVor_distance_2(float2 a, float2 b, float metric, float exponent)
 {
+    float result = (float)0;
     float2 dv = abs(a - b);
     if (metric < 0.5) {
         result = length(a - b);
@@ -208,14 +220,16 @@ Function BLVor_distance_2(in float2 a, in float2 b, in float metric, in float ex
         float2 pw = pow(dv, exponent);
         result = pow(pw.x + pw.y, 1.0 / exponent);
     }
+    return result;
 }
 
 // A monotone stand-in used only to pick the nearest cell, never to report a distance: Euclidean
 // skips the sqrt. Upstream uses it in f1 and n-sphere but *not* in f2, which is an inconsistency
 // worth preserving rather than tidying.
-Function BLVor_distance_bound_2(in float2 a, in float2 b, in float metric, in float exponent,
-                        out float result)
+/// @custom
+float BLVor_distance_bound_2(float2 a, float2 b, float metric, float exponent)
 {
+    float result = (float)0;
     float2 dv = abs(a - b);
     if (metric < 0.5) {
         float2 e = a - b;
@@ -231,11 +245,13 @@ Function BLVor_distance_bound_2(in float2 a, in float2 b, in float metric, in fl
         float2 pw = pow(dv, exponent);
         result = pw.x + pw.y;
     }
+    return result;
 }
 
-Function BLVor_f1_2(in float2 coord, in float randomness, in float metric, in float exponent,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_f1_2(float2 coord, float randomness, float metric, float exponent, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float2 cellPositionF = floor(coord);
     float2 localPosition = coord - cellPositionF;
     int2 cellPosition = int2(cellPositionF);
@@ -261,14 +277,15 @@ Function BLVor_f1_2(in float2 coord, in float randomness, in float metric, in fl
     outColor = BLHash_int2_to_float3(cellPosition + targetOffset);
     float2 v = targetPosition + cellPositionF;
     outPosition = float4(v.x, v.y, 0.0, 0.0);
+    return outDistance;
 }
 
 // Note the window: -2..2, not -1..1. In 2D that is 25 cells per octave against 9
 // for F1, which is most of why Smooth F1 is the expensive feature.
-Function BLVor_smooth_f1_2(in float2 coord, in float randomness, in float metric,
-                        in float exponent, in float smoothness,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_smooth_f1_2(float2 coord, float randomness, float metric, float exponent, float smoothness, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float2 cellPositionF = floor(coord);
     float2 localPosition = coord - cellPositionF;
     int2 cellPosition = int2(cellPositionF);
@@ -298,11 +315,13 @@ Function BLVor_smooth_f1_2(in float2 coord, in float randomness, in float metric
     outColor = smoothColor;
     float2 v = cellPositionF + smoothPosition;
     outPosition = float4(v.x, v.y, 0.0, 0.0);
+    return outDistance;
 }
 
-Function BLVor_f2_2(in float2 coord, in float randomness, in float metric, in float exponent,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_f2_2(float2 coord, float randomness, float metric, float exponent, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float2 cellPositionF = floor(coord);
     float2 localPosition = coord - cellPositionF;
     int2 cellPosition = int2(cellPositionF);
@@ -340,12 +359,15 @@ Function BLVor_f2_2(in float2 coord, in float randomness, in float metric, in fl
     outColor = BLHash_int2_to_float3(cellPosition + offsetF2);
     float2 v = positionF2 + cellPositionF;
     outPosition = float4(v.x, v.y, 0.0, 0.0);
+    return outDistance;
 }
 
 // Distance to Edge ignores the metric entirely — it is squared-Euclidean nearest-point followed by
 // a plane distance to each bisector.
-Function BLVor_dist_to_edge_2(in float2 coord, in float randomness, out float result)
+/// @custom
+float BLVor_dist_to_edge_2(float2 coord, float randomness)
 {
+    float result = (float)0;
     float2 cellPositionF = floor(coord);
     float2 localPosition = coord - cellPositionF;
     int2 cellPosition = int2(cellPositionF);
@@ -380,12 +402,15 @@ Function BLVor_dist_to_edge_2(in float2 coord, in float randomness, out float re
     }}
 
     result = minDistance;
+    return result;
 }
 
 // N-Sphere Radius is not fractalised and ignores the metric: half the distance from the closest
 // point to *its* closest neighbour.
-Function BLVor_n_sphere_radius_2(in float2 coord, in float randomness, out float result)
+/// @custom
+float BLVor_n_sphere_radius_2(float2 coord, float randomness)
 {
+    float result = (float)0;
     float2 cellPositionF = floor(coord);
     float2 localPosition = coord - cellPositionF;
     int2 cellPosition = int2(cellPositionF);
@@ -428,6 +453,7 @@ Function BLVor_n_sphere_radius_2(in float2 coord, in float randomness, out float
     }}
 
     result = length(closestToClosest - closestPoint) / 2.0;
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -437,9 +463,10 @@ Function BLVor_n_sphere_radius_2(in float2 coord, in float randomness, out float
 // Metric-aware distance. Minkowski with exponent 1 is Manhattan and with 2 is Euclidean, but the
 // dedicated branches are kept because upstream keeps them — pow() is not bit-identical to the
 // closed forms.
-Function BLVor_distance_3(in float3 a, in float3 b, in float metric, in float exponent,
-                        out float result)
+/// @custom
+float BLVor_distance_3(float3 a, float3 b, float metric, float exponent)
 {
+    float result = (float)0;
     float3 dv = abs(a - b);
     if (metric < 0.5) {
         result = length(a - b);
@@ -454,14 +481,16 @@ Function BLVor_distance_3(in float3 a, in float3 b, in float metric, in float ex
         float3 pw = pow(dv, exponent);
         result = pow(pw.x + pw.y + pw.z, 1.0 / exponent);
     }
+    return result;
 }
 
 // A monotone stand-in used only to pick the nearest cell, never to report a distance: Euclidean
 // skips the sqrt. Upstream uses it in f1 and n-sphere but *not* in f2, which is an inconsistency
 // worth preserving rather than tidying.
-Function BLVor_distance_bound_3(in float3 a, in float3 b, in float metric, in float exponent,
-                        out float result)
+/// @custom
+float BLVor_distance_bound_3(float3 a, float3 b, float metric, float exponent)
 {
+    float result = (float)0;
     float3 dv = abs(a - b);
     if (metric < 0.5) {
         float3 e = a - b;
@@ -477,11 +506,13 @@ Function BLVor_distance_bound_3(in float3 a, in float3 b, in float metric, in fl
         float3 pw = pow(dv, exponent);
         result = pw.x + pw.y + pw.z;
     }
+    return result;
 }
 
-Function BLVor_f1_3(in float3 coord, in float randomness, in float metric, in float exponent,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_f1_3(float3 coord, float randomness, float metric, float exponent, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float3 cellPositionF = floor(coord);
     float3 localPosition = coord - cellPositionF;
     int3 cellPosition = int3(cellPositionF);
@@ -508,14 +539,15 @@ Function BLVor_f1_3(in float3 coord, in float randomness, in float metric, in fl
     outColor = BLHash_int3_to_float3(cellPosition + targetOffset);
     float3 v = targetPosition + cellPositionF;
     outPosition = float4(v.x, v.y, v.z, 0.0);
+    return outDistance;
 }
 
 // Note the window: -2..2, not -1..1. In 3D that is 125 cells per octave against 27
 // for F1, which is most of why Smooth F1 is the expensive feature.
-Function BLVor_smooth_f1_3(in float3 coord, in float randomness, in float metric,
-                        in float exponent, in float smoothness,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_smooth_f1_3(float3 coord, float randomness, float metric, float exponent, float smoothness, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float3 cellPositionF = floor(coord);
     float3 localPosition = coord - cellPositionF;
     int3 cellPosition = int3(cellPositionF);
@@ -546,11 +578,13 @@ Function BLVor_smooth_f1_3(in float3 coord, in float randomness, in float metric
     outColor = smoothColor;
     float3 v = cellPositionF + smoothPosition;
     outPosition = float4(v.x, v.y, v.z, 0.0);
+    return outDistance;
 }
 
-Function BLVor_f2_3(in float3 coord, in float randomness, in float metric, in float exponent,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_f2_3(float3 coord, float randomness, float metric, float exponent, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float3 cellPositionF = floor(coord);
     float3 localPosition = coord - cellPositionF;
     int3 cellPosition = int3(cellPositionF);
@@ -589,12 +623,15 @@ Function BLVor_f2_3(in float3 coord, in float randomness, in float metric, in fl
     outColor = BLHash_int3_to_float3(cellPosition + offsetF2);
     float3 v = positionF2 + cellPositionF;
     outPosition = float4(v.x, v.y, v.z, 0.0);
+    return outDistance;
 }
 
 // Distance to Edge ignores the metric entirely — it is squared-Euclidean nearest-point followed by
 // a plane distance to each bisector.
-Function BLVor_dist_to_edge_3(in float3 coord, in float randomness, out float result)
+/// @custom
+float BLVor_dist_to_edge_3(float3 coord, float randomness)
 {
+    float result = (float)0;
     float3 cellPositionF = floor(coord);
     float3 localPosition = coord - cellPositionF;
     int3 cellPosition = int3(cellPositionF);
@@ -631,12 +668,15 @@ Function BLVor_dist_to_edge_3(in float3 coord, in float randomness, out float re
     }}}
 
     result = minDistance;
+    return result;
 }
 
 // N-Sphere Radius is not fractalised and ignores the metric: half the distance from the closest
 // point to *its* closest neighbour.
-Function BLVor_n_sphere_radius_3(in float3 coord, in float randomness, out float result)
+/// @custom
+float BLVor_n_sphere_radius_3(float3 coord, float randomness)
 {
+    float result = (float)0;
     float3 cellPositionF = floor(coord);
     float3 localPosition = coord - cellPositionF;
     int3 cellPosition = int3(cellPositionF);
@@ -681,6 +721,7 @@ Function BLVor_n_sphere_radius_3(in float3 coord, in float randomness, out float
     }}}
 
     result = length(closestToClosest - closestPoint) / 2.0;
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -690,9 +731,10 @@ Function BLVor_n_sphere_radius_3(in float3 coord, in float randomness, out float
 // Metric-aware distance. Minkowski with exponent 1 is Manhattan and with 2 is Euclidean, but the
 // dedicated branches are kept because upstream keeps them — pow() is not bit-identical to the
 // closed forms.
-Function BLVor_distance_4(in float4 a, in float4 b, in float metric, in float exponent,
-                        out float result)
+/// @custom
+float BLVor_distance_4(float4 a, float4 b, float metric, float exponent)
 {
+    float result = (float)0;
     float4 dv = abs(a - b);
     if (metric < 0.5) {
         result = length(a - b);
@@ -707,14 +749,16 @@ Function BLVor_distance_4(in float4 a, in float4 b, in float metric, in float ex
         float4 pw = pow(dv, exponent);
         result = pow(pw.x + pw.y + pw.z + pw.w, 1.0 / exponent);
     }
+    return result;
 }
 
 // A monotone stand-in used only to pick the nearest cell, never to report a distance: Euclidean
 // skips the sqrt. Upstream uses it in f1 and n-sphere but *not* in f2, which is an inconsistency
 // worth preserving rather than tidying.
-Function BLVor_distance_bound_4(in float4 a, in float4 b, in float metric, in float exponent,
-                        out float result)
+/// @custom
+float BLVor_distance_bound_4(float4 a, float4 b, float metric, float exponent)
 {
+    float result = (float)0;
     float4 dv = abs(a - b);
     if (metric < 0.5) {
         float4 e = a - b;
@@ -730,11 +774,13 @@ Function BLVor_distance_bound_4(in float4 a, in float4 b, in float metric, in fl
         float4 pw = pow(dv, exponent);
         result = pw.x + pw.y + pw.z + pw.w;
     }
+    return result;
 }
 
-Function BLVor_f1_4(in float4 coord, in float randomness, in float metric, in float exponent,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_f1_4(float4 coord, float randomness, float metric, float exponent, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float4 cellPositionF = floor(coord);
     float4 localPosition = coord - cellPositionF;
     int4 cellPosition = int4(cellPositionF);
@@ -762,14 +808,15 @@ Function BLVor_f1_4(in float4 coord, in float randomness, in float metric, in fl
     outColor = BLHash_int4_to_float3(cellPosition + targetOffset);
     float4 v = targetPosition + cellPositionF;
     outPosition = v;
+    return outDistance;
 }
 
 // Note the window: -2..2, not -1..1. In 4D that is 625 cells per octave against 81
 // for F1, which is most of why Smooth F1 is the expensive feature.
-Function BLVor_smooth_f1_4(in float4 coord, in float randomness, in float metric,
-                        in float exponent, in float smoothness,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_smooth_f1_4(float4 coord, float randomness, float metric, float exponent, float smoothness, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float4 cellPositionF = floor(coord);
     float4 localPosition = coord - cellPositionF;
     int4 cellPosition = int4(cellPositionF);
@@ -801,11 +848,13 @@ Function BLVor_smooth_f1_4(in float4 coord, in float randomness, in float metric
     outColor = smoothColor;
     float4 v = cellPositionF + smoothPosition;
     outPosition = v;
+    return outDistance;
 }
 
-Function BLVor_f2_4(in float4 coord, in float randomness, in float metric, in float exponent,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_f2_4(float4 coord, float randomness, float metric, float exponent, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float4 cellPositionF = floor(coord);
     float4 localPosition = coord - cellPositionF;
     int4 cellPosition = int4(cellPositionF);
@@ -845,12 +894,15 @@ Function BLVor_f2_4(in float4 coord, in float randomness, in float metric, in fl
     outColor = BLHash_int4_to_float3(cellPosition + offsetF2);
     float4 v = positionF2 + cellPositionF;
     outPosition = v;
+    return outDistance;
 }
 
 // Distance to Edge ignores the metric entirely — it is squared-Euclidean nearest-point followed by
 // a plane distance to each bisector.
-Function BLVor_dist_to_edge_4(in float4 coord, in float randomness, out float result)
+/// @custom
+float BLVor_dist_to_edge_4(float4 coord, float randomness)
 {
+    float result = (float)0;
     float4 cellPositionF = floor(coord);
     float4 localPosition = coord - cellPositionF;
     int4 cellPosition = int4(cellPositionF);
@@ -889,12 +941,15 @@ Function BLVor_dist_to_edge_4(in float4 coord, in float randomness, out float re
     }}}}
 
     result = minDistance;
+    return result;
 }
 
 // N-Sphere Radius is not fractalised and ignores the metric: half the distance from the closest
 // point to *its* closest neighbour.
-Function BLVor_n_sphere_radius_4(in float4 coord, in float randomness, out float result)
+/// @custom
+float BLVor_n_sphere_radius_4(float4 coord, float randomness)
 {
+    float result = (float)0;
     float4 cellPositionF = floor(coord);
     float4 localPosition = coord - cellPositionF;
     int4 cellPosition = int4(cellPositionF);
@@ -941,6 +996,7 @@ Function BLVor_n_sphere_radius_4(in float4 coord, in float randomness, out float
     }}}}
 
     result = length(closestToClosest - closestPoint) / 2.0;
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -951,12 +1007,10 @@ Function BLVor_n_sphere_radius_4(in float4 coord, in float randomness, out float
 // that uses any feature, and the feature is an author-time dropdown anyway.
 // ---------------------------------------------------------------------------------------------
 
-Function BLVor_fractal_f1_1(in float coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_f1_1(float coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -973,7 +1027,7 @@ Function BLVor_fractal_f1_1(in float coord, in float detail, in float roughness,
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_f1_1(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+        oDist = BLVor_f1_1(coord * octaveScale, randomness, metric, exponent, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1016,14 +1070,13 @@ Function BLVor_fractal_f1_1(in float coord, in float detail, in float roughness,
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_smoothf1_1(in float coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_smoothf1_1(float coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1040,7 +1093,7 @@ Function BLVor_fractal_smoothf1_1(in float coord, in float detail, in float roug
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_smooth_f1_1(coord * octaveScale, randomness, metric, exponent, smoothness, oDist, oColor, oPosition);
+        oDist = BLVor_smooth_f1_1(coord * octaveScale, randomness, metric, exponent, smoothness, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1083,14 +1136,13 @@ Function BLVor_fractal_smoothf1_1(in float coord, in float detail, in float roug
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_f2_1(in float coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_f2_1(float coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1107,7 +1159,7 @@ Function BLVor_fractal_f2_1(in float coord, in float detail, in float roughness,
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_f2_1(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+        oDist = BLVor_f2_1(coord * octaveScale, randomness, metric, exponent, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1150,12 +1202,13 @@ Function BLVor_fractal_f2_1(in float coord, in float detail, in float roughness,
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_d2e_1(in float coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float maxDistance,
-                        in float normalize01, out float result)
+/// @custom
+float BLVor_fractal_d2e_1(float coord, float detail, float roughness, float lacunarity, float randomness, float maxDistance, float normalize01)
 {
+    float result = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = maxDistance;
     float octaveScale = 1.0;
@@ -1194,14 +1247,13 @@ Function BLVor_fractal_d2e_1(in float coord, in float detail, in float roughness
     }
 
     result = dist;
+    return result;
 }
 
-Function BLVor_fractal_f1_2(in float2 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_f1_2(float2 coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1218,7 +1270,7 @@ Function BLVor_fractal_f1_2(in float2 coord, in float detail, in float roughness
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_f1_2(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+        oDist = BLVor_f1_2(coord * octaveScale, randomness, metric, exponent, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1261,14 +1313,13 @@ Function BLVor_fractal_f1_2(in float2 coord, in float detail, in float roughness
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_smoothf1_2(in float2 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_smoothf1_2(float2 coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1285,7 +1336,7 @@ Function BLVor_fractal_smoothf1_2(in float2 coord, in float detail, in float rou
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_smooth_f1_2(coord * octaveScale, randomness, metric, exponent, smoothness, oDist, oColor, oPosition);
+        oDist = BLVor_smooth_f1_2(coord * octaveScale, randomness, metric, exponent, smoothness, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1328,14 +1379,13 @@ Function BLVor_fractal_smoothf1_2(in float2 coord, in float detail, in float rou
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_f2_2(in float2 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_f2_2(float2 coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1352,7 +1402,7 @@ Function BLVor_fractal_f2_2(in float2 coord, in float detail, in float roughness
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_f2_2(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+        oDist = BLVor_f2_2(coord * octaveScale, randomness, metric, exponent, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1395,12 +1445,13 @@ Function BLVor_fractal_f2_2(in float2 coord, in float detail, in float roughness
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_d2e_2(in float2 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float maxDistance,
-                        in float normalize01, out float result)
+/// @custom
+float BLVor_fractal_d2e_2(float2 coord, float detail, float roughness, float lacunarity, float randomness, float maxDistance, float normalize01)
 {
+    float result = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = maxDistance;
     float octaveScale = 1.0;
@@ -1439,14 +1490,13 @@ Function BLVor_fractal_d2e_2(in float2 coord, in float detail, in float roughnes
     }
 
     result = dist;
+    return result;
 }
 
-Function BLVor_fractal_f1_3(in float3 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_f1_3(float3 coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1463,7 +1513,7 @@ Function BLVor_fractal_f1_3(in float3 coord, in float detail, in float roughness
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_f1_3(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+        oDist = BLVor_f1_3(coord * octaveScale, randomness, metric, exponent, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1506,14 +1556,13 @@ Function BLVor_fractal_f1_3(in float3 coord, in float detail, in float roughness
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_smoothf1_3(in float3 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_smoothf1_3(float3 coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1530,7 +1579,7 @@ Function BLVor_fractal_smoothf1_3(in float3 coord, in float detail, in float rou
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_smooth_f1_3(coord * octaveScale, randomness, metric, exponent, smoothness, oDist, oColor, oPosition);
+        oDist = BLVor_smooth_f1_3(coord * octaveScale, randomness, metric, exponent, smoothness, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1573,14 +1622,13 @@ Function BLVor_fractal_smoothf1_3(in float3 coord, in float detail, in float rou
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_f2_3(in float3 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_f2_3(float3 coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1597,7 +1645,7 @@ Function BLVor_fractal_f2_3(in float3 coord, in float detail, in float roughness
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_f2_3(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+        oDist = BLVor_f2_3(coord * octaveScale, randomness, metric, exponent, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1640,12 +1688,13 @@ Function BLVor_fractal_f2_3(in float3 coord, in float detail, in float roughness
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_d2e_3(in float3 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float maxDistance,
-                        in float normalize01, out float result)
+/// @custom
+float BLVor_fractal_d2e_3(float3 coord, float detail, float roughness, float lacunarity, float randomness, float maxDistance, float normalize01)
 {
+    float result = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = maxDistance;
     float octaveScale = 1.0;
@@ -1684,14 +1733,13 @@ Function BLVor_fractal_d2e_3(in float3 coord, in float detail, in float roughnes
     }
 
     result = dist;
+    return result;
 }
 
-Function BLVor_fractal_f1_4(in float4 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_f1_4(float4 coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1708,7 +1756,7 @@ Function BLVor_fractal_f1_4(in float4 coord, in float detail, in float roughness
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_f1_4(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+        oDist = BLVor_f1_4(coord * octaveScale, randomness, metric, exponent, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1751,14 +1799,13 @@ Function BLVor_fractal_f1_4(in float4 coord, in float detail, in float roughness
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_smoothf1_4(in float4 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_smoothf1_4(float4 coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1775,7 +1822,7 @@ Function BLVor_fractal_smoothf1_4(in float4 coord, in float detail, in float rou
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_smooth_f1_4(coord * octaveScale, randomness, metric, exponent, smoothness, oDist, oColor, oPosition);
+        oDist = BLVor_smooth_f1_4(coord * octaveScale, randomness, metric, exponent, smoothness, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1818,14 +1865,13 @@ Function BLVor_fractal_smoothf1_4(in float4 coord, in float detail, in float rou
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_f2_4(in float4 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float metric,
-                        in float exponent, in float smoothness, in float maxDistance,
-                        in float normalize01, in float scaleIn,
-                        out float outDistance, out float3 outColor, out float4 outPosition)
+/// @custom
+float BLVor_fractal_f2_4(float4 coord, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float smoothness, float maxDistance, float normalize01, float scaleIn, out float3 outColor, out float4 outPosition)
 {
+    float outDistance = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = 0.0;
     float octaveScale = 1.0;
@@ -1842,7 +1888,7 @@ Function BLVor_fractal_f2_4(in float4 coord, in float detail, in float roughness
         float oDist;
         float3 oColor;
         float4 oPosition;
-        BLVor_f2_4(coord * octaveScale, randomness, metric, exponent, oDist, oColor, oPosition);
+        oDist = BLVor_f2_4(coord * octaveScale, randomness, metric, exponent, oColor, oPosition);
 
         if (zeroInput) {
             maxAmplitude = 1.0;
@@ -1885,12 +1931,13 @@ Function BLVor_fractal_f2_4(in float4 coord, in float detail, in float roughness
     outDistance = accDistance;
     outColor = accColor;
     outPosition = accPosition;
+    return outDistance;
 }
 
-Function BLVor_fractal_d2e_4(in float4 coord, in float detail, in float roughness,
-                        in float lacunarity, in float randomness, in float maxDistance,
-                        in float normalize01, out float result)
+/// @custom
+float BLVor_fractal_d2e_4(float4 coord, float detail, float roughness, float lacunarity, float randomness, float maxDistance, float normalize01)
 {
+    float result = (float)0;
     float amplitude = 1.0;
     float maxAmplitude = maxDistance;
     float octaveScale = 1.0;
@@ -1929,6 +1976,7 @@ Function BLVor_fractal_d2e_4(in float4 coord, in float detail, in float roughnes
     }
 
     result = dist;
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1941,419 +1989,395 @@ Function BLVor_fractal_d2e_4(in float4 coord, in float detail, in float roughnes
 // Distance To Edge, N-Sphere Radius and every 1D entry, as in Blender.
 // ---------------------------------------------------------------------------------------------
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::TexVoronoiF1_1D
+void BL_TexVoronoiF1_1D(float w, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
 {
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float p = w * scale;
+    float md = 0.5 + 0.5 * rnd;
+    float maxDistance = md;
+    float dist;
+    float3 col;
+    float4 pos;
+    dist = BLVor_fractal_f1_1(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                             maxDistance, normalize01, scale, col, pos);
 
-    Function TexVoronoiF1_1D(in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float p = w * scale;
-        float md = 0.5 + 0.5 * rnd;
-        float maxDistance = md;
-        float dist;
-        float3 col;
-        float4 pos;
-        BLVor_fractal_f1_1(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                 maxDistance, normalize01, scale, dist, col, pos);
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
 
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
+/// @custom
+/// @name BL::TexVoronoiSmoothF1_1D
+void BL_TexVoronoiSmoothF1_1D(float w, float scale, float detail, float roughness, float lacunarity, float smoothness, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float p = w * scale;
+    float md = 0.5 + 0.5 * rnd;
+    float maxDistance = md;
+    float sm = clamp(smoothness / 2.0, 0.0, 0.5);
+    float dist;
+    float3 col;
+    float4 pos;
+    if (sm != 0.0) {
+        dist = BLVor_fractal_smoothf1_1(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
+                                 maxDistance, normalize01, scale, col, pos);
+    }
+    else {
+        dist = BLVor_fractal_f1_1(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, col, pos);
     }
 
-    Function TexVoronoiSmoothF1_1D(in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float smoothness, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float p = w * scale;
-        float md = 0.5 + 0.5 * rnd;
-        float maxDistance = md;
-        float sm = clamp(smoothness / 2.0, 0.0, 0.5);
-        float dist;
-        float3 col;
-        float4 pos;
-        if (sm != 0.0) {
-            BLVor_fractal_smoothf1_1(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
-                                     maxDistance, normalize01, scale, dist, col, pos);
-        }
-        else {
-            BLVor_fractal_f1_1(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                     maxDistance, normalize01, scale, dist, col, pos);
-        }
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
 
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
+/// @custom
+/// @name BL::TexVoronoiF2_1D
+void BL_TexVoronoiF2_1D(float w, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float p = w * scale;
+    float md = 0.5 + 0.5 * rnd;
+    float maxDistance = md * 2.0;
+    float dist;
+    float3 col;
+    float4 pos;
+    dist = BLVor_fractal_f2_1(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                             maxDistance, normalize01, scale, col, pos);
+
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
+
+/// @custom
+/// @name BL::TexVoronoiDistToEdge_1D
+void BL_TexVoronoiDistToEdge_1D(float w, float scale, float detail, float roughness, float lacunarity, float randomness, float normalize01, out float outDistance)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float p = w * scale;
+    float maxDistance = 0.5 + 0.5 * rnd;
+
+    outDistance = BLVor_fractal_d2e_1(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
+}
+
+// Not fractalised upstream, so there is no detail / roughness / lacunarity here.
+/// @custom
+/// @name BL::TexVoronoiRadius_1D
+void BL_TexVoronoiRadius_1D(float w, float scale, float randomness, out float outRadius)
+{
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float p = w * scale;
+    outRadius = BLVor_n_sphere_radius_1(p, rnd);
+}
+
+/// @custom
+/// @name BL::TexVoronoiF1_2D
+void BL_TexVoronoiF1_2D(float2 co, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float2 p = co * scale;
+    float md = 0.5 + 0.5 * rnd;
+    float diag = BLVor_distance_2(float2(0.0, 0.0), float2(md, md), metric, exponent);
+    float maxDistance = diag;
+    float dist;
+    float3 col;
+    float4 pos;
+    dist = BLVor_fractal_f1_2(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                             maxDistance, normalize01, scale, col, pos);
+
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
+
+/// @custom
+/// @name BL::TexVoronoiSmoothF1_2D
+void BL_TexVoronoiSmoothF1_2D(float2 co, float scale, float detail, float roughness, float lacunarity, float smoothness, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float2 p = co * scale;
+    float md = 0.5 + 0.5 * rnd;
+    float diag = BLVor_distance_2(float2(0.0, 0.0), float2(md, md), metric, exponent);
+    float maxDistance = diag;
+    float sm = clamp(smoothness / 2.0, 0.0, 0.5);
+    float dist;
+    float3 col;
+    float4 pos;
+    if (sm != 0.0) {
+        dist = BLVor_fractal_smoothf1_2(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
+                                 maxDistance, normalize01, scale, col, pos);
+    }
+    else {
+        dist = BLVor_fractal_f1_2(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, col, pos);
     }
 
-    Function TexVoronoiF2_1D(in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float p = w * scale;
-        float md = 0.5 + 0.5 * rnd;
-        float maxDistance = md * 2.0;
-        float dist;
-        float3 col;
-        float4 pos;
-        BLVor_fractal_f2_1(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                 maxDistance, normalize01, scale, dist, col, pos);
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
 
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
+/// @custom
+/// @name BL::TexVoronoiF2_2D
+void BL_TexVoronoiF2_2D(float2 co, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float2 p = co * scale;
+    float md = 0.5 + 0.5 * rnd;
+    float diag = BLVor_distance_2(float2(0.0, 0.0), float2(md, md), metric, exponent);
+    float maxDistance = diag * 2.0;
+    float dist;
+    float3 col;
+    float4 pos;
+    dist = BLVor_fractal_f2_2(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                             maxDistance, normalize01, scale, col, pos);
+
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
+
+/// @custom
+/// @name BL::TexVoronoiDistToEdge_2D
+void BL_TexVoronoiDistToEdge_2D(float2 co, float scale, float detail, float roughness, float lacunarity, float randomness, float normalize01, out float outDistance)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float2 p = co * scale;
+    float maxDistance = 0.5 + 0.5 * rnd;
+
+    outDistance = BLVor_fractal_d2e_2(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
+}
+
+// Not fractalised upstream, so there is no detail / roughness / lacunarity here.
+/// @custom
+/// @name BL::TexVoronoiRadius_2D
+void BL_TexVoronoiRadius_2D(float2 co, float scale, float randomness, out float outRadius)
+{
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float2 p = co * scale;
+    outRadius = BLVor_n_sphere_radius_2(p, rnd);
+}
+
+/// @custom
+/// @name BL::TexVoronoiF1_3D
+void BL_TexVoronoiF1_3D(float3 co, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float3 p = co * scale;
+    float md = 0.5 + 0.5 * rnd;
+    float diag = BLVor_distance_3(float3(0.0, 0.0, 0.0), float3(md, md, md), metric, exponent);
+    float maxDistance = diag;
+    float dist;
+    float3 col;
+    float4 pos;
+    dist = BLVor_fractal_f1_3(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                             maxDistance, normalize01, scale, col, pos);
+
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
+
+/// @custom
+/// @name BL::TexVoronoiSmoothF1_3D
+void BL_TexVoronoiSmoothF1_3D(float3 co, float scale, float detail, float roughness, float lacunarity, float smoothness, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float3 p = co * scale;
+    float md = 0.5 + 0.5 * rnd;
+    float diag = BLVor_distance_3(float3(0.0, 0.0, 0.0), float3(md, md, md), metric, exponent);
+    float maxDistance = diag;
+    float sm = clamp(smoothness / 2.0, 0.0, 0.5);
+    float dist;
+    float3 col;
+    float4 pos;
+    if (sm != 0.0) {
+        dist = BLVor_fractal_smoothf1_3(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
+                                 maxDistance, normalize01, scale, col, pos);
+    }
+    else {
+        dist = BLVor_fractal_f1_3(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, col, pos);
     }
 
-    Function TexVoronoiDistToEdge_1D(in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float normalize01, out float outDistance)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float p = w * scale;
-        float maxDistance = 0.5 + 0.5 * rnd;
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
 
-        outDistance = BLVor_fractal_d2e_1(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
+/// @custom
+/// @name BL::TexVoronoiF2_3D
+void BL_TexVoronoiF2_3D(float3 co, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float3 p = co * scale;
+    float md = 0.5 + 0.5 * rnd;
+    float diag = BLVor_distance_3(float3(0.0, 0.0, 0.0), float3(md, md, md), metric, exponent);
+    float maxDistance = diag * 2.0;
+    float dist;
+    float3 col;
+    float4 pos;
+    dist = BLVor_fractal_f2_3(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                             maxDistance, normalize01, scale, col, pos);
+
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
+
+/// @custom
+/// @name BL::TexVoronoiDistToEdge_3D
+void BL_TexVoronoiDistToEdge_3D(float3 co, float scale, float detail, float roughness, float lacunarity, float randomness, float normalize01, out float outDistance)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float3 p = co * scale;
+    float maxDistance = 0.5 + 0.5 * rnd;
+
+    outDistance = BLVor_fractal_d2e_3(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
+}
+
+// Not fractalised upstream, so there is no detail / roughness / lacunarity here.
+/// @custom
+/// @name BL::TexVoronoiRadius_3D
+void BL_TexVoronoiRadius_3D(float3 co, float scale, float randomness, out float outRadius)
+{
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float3 p = co * scale;
+    outRadius = BLVor_n_sphere_radius_3(p, rnd);
+}
+
+/// @custom
+/// @name BL::TexVoronoiF1_4D
+void BL_TexVoronoiF1_4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float4 p = float4(co * scale, w * scale);
+    float md = 0.5 + 0.5 * rnd;
+    float diag = BLVor_distance_4(float4(0.0, 0.0, 0.0, 0.0), float4(md, md, md, md), metric, exponent);
+    float maxDistance = diag;
+    float dist;
+    float3 col;
+    float4 pos;
+    dist = BLVor_fractal_f1_4(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                             maxDistance, normalize01, scale, col, pos);
+
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
+
+/// @custom
+/// @name BL::TexVoronoiSmoothF1_4D
+void BL_TexVoronoiSmoothF1_4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float smoothness, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float4 p = float4(co * scale, w * scale);
+    float md = 0.5 + 0.5 * rnd;
+    float diag = BLVor_distance_4(float4(0.0, 0.0, 0.0, 0.0), float4(md, md, md, md), metric, exponent);
+    float maxDistance = diag;
+    float sm = clamp(smoothness / 2.0, 0.0, 0.5);
+    float dist;
+    float3 col;
+    float4 pos;
+    if (sm != 0.0) {
+        dist = BLVor_fractal_smoothf1_4(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
+                                 maxDistance, normalize01, scale, col, pos);
+    }
+    else {
+        dist = BLVor_fractal_f1_4(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                                 maxDistance, normalize01, scale, col, pos);
     }
 
-    // Not fractalised upstream, so there is no detail / roughness / lacunarity here.
-    Function TexVoronoiRadius_1D(in float w, in float scale, in float randomness,
-                        out float outRadius)
-    {
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float p = w * scale;
-        outRadius = BLVor_n_sphere_radius_1(p, rnd);
-    }
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
 
-    Function TexVoronoiF1_2D(in float2 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float2 p = co * scale;
-        float md = 0.5 + 0.5 * rnd;
-        float diag = BLVor_distance_2(float2(0.0, 0.0), float2(md, md), metric, exponent);
-        float maxDistance = diag;
-        float dist;
-        float3 col;
-        float4 pos;
-        BLVor_fractal_f1_2(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                 maxDistance, normalize01, scale, dist, col, pos);
+/// @custom
+/// @name BL::TexVoronoiF2_4D
+void BL_TexVoronoiF2_4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float4 p = float4(co * scale, w * scale);
+    float md = 0.5 + 0.5 * rnd;
+    float diag = BLVor_distance_4(float4(0.0, 0.0, 0.0, 0.0), float4(md, md, md, md), metric, exponent);
+    float maxDistance = diag * 2.0;
+    float dist;
+    float3 col;
+    float4 pos;
+    dist = BLVor_fractal_f2_4(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
+                             maxDistance, normalize01, scale, col, pos);
 
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
-    }
+    outDistance = dist;
+    outColor = col;
+    outPosition = pos.xyz;
+    outW = pos.w;
+}
 
-    Function TexVoronoiSmoothF1_2D(in float2 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float smoothness, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float2 p = co * scale;
-        float md = 0.5 + 0.5 * rnd;
-        float diag = BLVor_distance_2(float2(0.0, 0.0), float2(md, md), metric, exponent);
-        float maxDistance = diag;
-        float sm = clamp(smoothness / 2.0, 0.0, 0.5);
-        float dist;
-        float3 col;
-        float4 pos;
-        if (sm != 0.0) {
-            BLVor_fractal_smoothf1_2(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
-                                     maxDistance, normalize01, scale, dist, col, pos);
-        }
-        else {
-            BLVor_fractal_f1_2(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                     maxDistance, normalize01, scale, dist, col, pos);
-        }
+/// @custom
+/// @name BL::TexVoronoiDistToEdge_4D
+void BL_TexVoronoiDistToEdge_4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float randomness, float normalize01, out float outDistance)
+{
+    float dt = clamp(detail, 0.0, 15.0);
+    float rg = clamp(roughness, 0.0, 1.0);
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float4 p = float4(co * scale, w * scale);
+    float maxDistance = 0.5 + 0.5 * rnd;
 
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
-    }
+    outDistance = BLVor_fractal_d2e_4(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
+}
 
-    Function TexVoronoiF2_2D(in float2 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float2 p = co * scale;
-        float md = 0.5 + 0.5 * rnd;
-        float diag = BLVor_distance_2(float2(0.0, 0.0), float2(md, md), metric, exponent);
-        float maxDistance = diag * 2.0;
-        float dist;
-        float3 col;
-        float4 pos;
-        BLVor_fractal_f2_2(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                 maxDistance, normalize01, scale, dist, col, pos);
-
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
-    }
-
-    Function TexVoronoiDistToEdge_2D(in float2 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float normalize01, out float outDistance)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float2 p = co * scale;
-        float maxDistance = 0.5 + 0.5 * rnd;
-
-        outDistance = BLVor_fractal_d2e_2(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
-    }
-
-    // Not fractalised upstream, so there is no detail / roughness / lacunarity here.
-    Function TexVoronoiRadius_2D(in float2 co, in float scale, in float randomness,
-                        out float outRadius)
-    {
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float2 p = co * scale;
-        outRadius = BLVor_n_sphere_radius_2(p, rnd);
-    }
-
-    Function TexVoronoiF1_3D(in float3 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float3 p = co * scale;
-        float md = 0.5 + 0.5 * rnd;
-        float diag = BLVor_distance_3(float3(0.0, 0.0, 0.0), float3(md, md, md), metric, exponent);
-        float maxDistance = diag;
-        float dist;
-        float3 col;
-        float4 pos;
-        BLVor_fractal_f1_3(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                 maxDistance, normalize01, scale, dist, col, pos);
-
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
-    }
-
-    Function TexVoronoiSmoothF1_3D(in float3 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float smoothness, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float3 p = co * scale;
-        float md = 0.5 + 0.5 * rnd;
-        float diag = BLVor_distance_3(float3(0.0, 0.0, 0.0), float3(md, md, md), metric, exponent);
-        float maxDistance = diag;
-        float sm = clamp(smoothness / 2.0, 0.0, 0.5);
-        float dist;
-        float3 col;
-        float4 pos;
-        if (sm != 0.0) {
-            BLVor_fractal_smoothf1_3(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
-                                     maxDistance, normalize01, scale, dist, col, pos);
-        }
-        else {
-            BLVor_fractal_f1_3(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                     maxDistance, normalize01, scale, dist, col, pos);
-        }
-
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
-    }
-
-    Function TexVoronoiF2_3D(in float3 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float3 p = co * scale;
-        float md = 0.5 + 0.5 * rnd;
-        float diag = BLVor_distance_3(float3(0.0, 0.0, 0.0), float3(md, md, md), metric, exponent);
-        float maxDistance = diag * 2.0;
-        float dist;
-        float3 col;
-        float4 pos;
-        BLVor_fractal_f2_3(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                 maxDistance, normalize01, scale, dist, col, pos);
-
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
-    }
-
-    Function TexVoronoiDistToEdge_3D(in float3 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float normalize01, out float outDistance)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float3 p = co * scale;
-        float maxDistance = 0.5 + 0.5 * rnd;
-
-        outDistance = BLVor_fractal_d2e_3(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
-    }
-
-    // Not fractalised upstream, so there is no detail / roughness / lacunarity here.
-    Function TexVoronoiRadius_3D(in float3 co, in float scale, in float randomness,
-                        out float outRadius)
-    {
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float3 p = co * scale;
-        outRadius = BLVor_n_sphere_radius_3(p, rnd);
-    }
-
-    Function TexVoronoiF1_4D(in float3 co, in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float4 p = float4(co * scale, w * scale);
-        float md = 0.5 + 0.5 * rnd;
-        float diag = BLVor_distance_4(float4(0.0, 0.0, 0.0, 0.0), float4(md, md, md, md), metric, exponent);
-        float maxDistance = diag;
-        float dist;
-        float3 col;
-        float4 pos;
-        BLVor_fractal_f1_4(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                 maxDistance, normalize01, scale, dist, col, pos);
-
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
-    }
-
-    Function TexVoronoiSmoothF1_4D(in float3 co, in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float smoothness, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float4 p = float4(co * scale, w * scale);
-        float md = 0.5 + 0.5 * rnd;
-        float diag = BLVor_distance_4(float4(0.0, 0.0, 0.0, 0.0), float4(md, md, md, md), metric, exponent);
-        float maxDistance = diag;
-        float sm = clamp(smoothness / 2.0, 0.0, 0.5);
-        float dist;
-        float3 col;
-        float4 pos;
-        if (sm != 0.0) {
-            BLVor_fractal_smoothf1_4(p, dt, rg, lacunarity, rnd, metric, exponent, sm,
-                                     maxDistance, normalize01, scale, dist, col, pos);
-        }
-        else {
-            BLVor_fractal_f1_4(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                     maxDistance, normalize01, scale, dist, col, pos);
-        }
-
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
-    }
-
-    Function TexVoronoiF2_4D(in float3 co, in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float metric, in float exponent, in float normalize01,
-                        out float outDistance, out float3 outColor, out float3 outPosition,
-                        out float outW)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float4 p = float4(co * scale, w * scale);
-        float md = 0.5 + 0.5 * rnd;
-        float diag = BLVor_distance_4(float4(0.0, 0.0, 0.0, 0.0), float4(md, md, md, md), metric, exponent);
-        float maxDistance = diag * 2.0;
-        float dist;
-        float3 col;
-        float4 pos;
-        BLVor_fractal_f2_4(p, dt, rg, lacunarity, rnd, metric, exponent, 0.0,
-                                 maxDistance, normalize01, scale, dist, col, pos);
-
-        outDistance = dist;
-        outColor = col;
-        outPosition = pos.xyz;
-        outW = pos.w;
-    }
-
-    Function TexVoronoiDistToEdge_4D(in float3 co, in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float randomness,
-                        in float normalize01, out float outDistance)
-    {
-        float dt = clamp(detail, 0.0, 15.0);
-        float rg = clamp(roughness, 0.0, 1.0);
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float4 p = float4(co * scale, w * scale);
-        float maxDistance = 0.5 + 0.5 * rnd;
-
-        outDistance = BLVor_fractal_d2e_4(p, dt, rg, lacunarity, rnd, maxDistance, normalize01);
-    }
-
-    // Not fractalised upstream, so there is no detail / roughness / lacunarity here.
-    Function TexVoronoiRadius_4D(in float3 co, in float w, in float scale, in float randomness,
-                        out float outRadius)
-    {
-        float rnd = clamp(randomness, 0.0, 1.0);
-        float4 p = float4(co * scale, w * scale);
-        outRadius = BLVor_n_sphere_radius_4(p, rnd);
-    }
+// Not fractalised upstream, so there is no detail / roughness / lacunarity here.
+/// @custom
+/// @name BL::TexVoronoiRadius_4D
+void BL_TexVoronoiRadius_4D(float3 co, float w, float scale, float randomness, out float outRadius)
+{
+    float rnd = clamp(randomness, 0.0, 1.0);
+    float4 p = float4(co * scale, w * scale);
+    outRadius = BLVor_n_sphere_radius_4(p, rnd);
 }

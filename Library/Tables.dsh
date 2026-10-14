@@ -16,7 +16,7 @@
 // by default. A project on a different working space needs a different matrix, and the parity
 // harness cannot settle this one for you.
 
-import "Hash.dsh";
+#include "Hash.dsh"
 
 // ---------------------------------------------------------------------------------------------
 // Blackbody
@@ -27,8 +27,10 @@ import "Hash.dsh";
 // than Rec.709 — so the node clamps at the end rather than the fit doing it.
 // ---------------------------------------------------------------------------------------------
 
-Function BLTables_blackbody_rec709(in float t, out float3 result)
+/// @custom
+float3 BLTables_blackbody_rec709(float t)
 {
+    float3 result = (float3)0;
     if (t >= 12000.0) {
         result = float3(0.8262954810464208, 0.9945080501520986, 1.566307710274283);
     }
@@ -80,6 +82,7 @@ Function BLTables_blackbody_rec709(in float t, out float3 result)
                         g.x * tInv + g.y * t + g.z,
                         ((b.x * t + b.y) * t + b.z) * t + b.w);
     }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -90,8 +93,10 @@ Function BLTables_blackbody_rec709(in float t, out float3 result)
 // adjacent samples, and the table needs the extra 81st row to make that legal at i == 79.
 // ---------------------------------------------------------------------------------------------
 
-Function BLTables_wavelength_xyz(in float lambdaNm, out float3 result)
+/// @custom
+float3 BLTables_wavelength_xyz(float lambdaNm)
 {
+    float3 result = (float3)0;
     float ii = (lambdaNm - 380.0) * (1.0 / 5.0);   // scaled 0..80
     int i = int(ii);
 
@@ -188,35 +193,37 @@ Function BLTables_wavelength_xyz(in float lambdaNm, out float3 result)
         float3 b = cie[i + 1];
         result = a + f * (b - a);
     }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------------------------
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::Blackbody
+void BL_Blackbody(float temperature, out float3 color)
 {
-    Function Blackbody(in float temperature, out float3 color)
-    {
-        // rec709_to_rgb is identity on a Rec.709 working space, which is Unreal's default.
-        float3 c = BLTables_blackbody_rec709(temperature);
-        color = max(c, float3(0.0, 0.0, 0.0));
-    }
+    // rec709_to_rgb is identity on a Rec.709 working space, which is Unreal's default.
+    float3 c = BLTables_blackbody_rec709(temperature);
+    color = max(c, float3(0.0, 0.0, 0.0));
+}
 
-    Function Wavelength(in float wavelength, out float3 color)
-    {
-        float3 xyz = BLTables_wavelength_xyz(wavelength);
+/// @custom
+/// @name BL::Wavelength
+void BL_Wavelength(float wavelength, out float3 color)
+{
+    float3 xyz = BLTables_wavelength_xyz(wavelength);
 
-        // XYZ to linear Rec.709 (D65). Cycles takes this from the scene colour config; these are
-        // the standard coefficients for the default configuration.
-        float3 rgb = float3(
-             3.2404542 * xyz.x - 1.5371385 * xyz.y - 0.4985314 * xyz.z,
-            -0.9692660 * xyz.x + 1.8760108 * xyz.y + 0.0415560 * xyz.z,
-             0.0556434 * xyz.x - 0.2040259 * xyz.y + 1.0572252 * xyz.z);
+    // XYZ to linear Rec.709 (D65). Cycles takes this from the scene colour config; these are
+    // the standard coefficients for the default configuration.
+    float3 rgb = float3(
+         3.2404542 * xyz.x - 1.5371385 * xyz.y - 0.4985314 * xyz.z,
+        -0.9692660 * xyz.x + 1.8760108 * xyz.y + 0.0415560 * xyz.z,
+         0.0556434 * xyz.x - 0.2040259 * xyz.y + 1.0572252 * xyz.z);
 
-        // Upstream's comment: "Empirical scale from lg to make all comps <= 1".
-        rgb = rgb * (1.0 / 2.52);
+    // Upstream's comment: "Empirical scale from lg to make all comps <= 1".
+    rgb = rgb * (1.0 / 2.52);
 
-        color = max(rgb, float3(0.0, 0.0, 0.0));
-    }
+    color = max(rgb, float3(0.0, 0.0, 0.0));
 }

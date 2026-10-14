@@ -7,8 +7,10 @@
 //   0 Linear  |  1 Quadratic  |  2 Easing  |  3 Diagonal
 //   4 Spherical  |  5 Quadratic Sphere  |  6 Radial
 
-Function BLGradient_fac(in float3 p, in float type, out float result)
+/// @custom
+float BLGradient_fac(float3 p, float type)
 {
+    float result = (float)0;
     float x = p.x;
     float y = p.y;
     float z = p.z;
@@ -37,14 +39,14 @@ Function BLGradient_fac(in float3 p, in float type, out float result)
     else {
         result = atan2(y, x) / 6.28318530717958648 + 0.5;
     }
+    return result;
 }
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::TexGradient
+void BL_TexGradient(float3 co, float type, out float fac, out float3 color)
 {
-    Function TexGradient(in float3 co, in float type, out float fac, out float3 color)
-    {
-        float f = BLGradient_fac(co, type);
-        fac = saturate(f);
-        color = float3(fac, fac, fac);
-    }
+    float f = BLGradient_fac(co, type);
+    fac = saturate(f);
+    color = float3(fac, fac, fac);
 }

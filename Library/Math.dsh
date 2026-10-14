@@ -7,7 +7,7 @@
 // order Blender's dropdown lists them. Pass a literal: the compiler then folds the chain down to
 // the one branch you asked for. A ScalarParameter compiles all forty.
 
-import "Hash.dsh";
+#include "Hash.dsh"
 
 // ---------------------------------------------------------------------------------------------
 // safe_* helpers
@@ -17,20 +17,28 @@ import "Hash.dsh";
 // they are ported as written.
 // ---------------------------------------------------------------------------------------------
 
-Function BLMath_safe_divide(in float a, in float b, out float result)
+/// @custom
+float BLMath_safe_divide(float a, float b)
 {
+    float result = (float)0;
     result = (b != 0.0) ? (a / b) : 0.0;
+    return result;
 }
 
-Function BLMath_safe_powf(in float a, in float b, out float result)
+/// @custom
+float BLMath_safe_powf(float a, float b)
 {
+    float result = (float)0;
     // A negative base with a fractional exponent has no real value; upstream returns zero rather
     // than NaN.
     result = (a < 0.0 && b != trunc(b)) ? 0.0 : pow(a, b);
+    return result;
 }
 
-Function BLMath_safe_logf(in float a, in float b, out float result)
+/// @custom
+float BLMath_safe_logf(float a, float b)
 {
+    float result = (float)0;
     if (a <= 0.0 || b <= 0.0) {
         result = 0.0;
     }
@@ -39,46 +47,70 @@ Function BLMath_safe_logf(in float a, in float b, out float result)
         float lb = log(b);
         result = (lb != 0.0) ? (la / lb) : 0.0;
     }
+    return result;
 }
 
-Function BLMath_inversesqrtf(in float f, out float result)
+/// @custom
+float BLMath_inversesqrtf(float f)
 {
+    float result = (float)0;
     result = (f > 0.0) ? (1.0 / sqrt(f)) : 0.0;
+    return result;
 }
 
-Function BLMath_compatible_signf(in float f, out float result)
+/// @custom
+float BLMath_compatible_signf(float f)
 {
+    float result = (float)0;
     result = (f == 0.0) ? 0.0 : ((f < 0.0) ? -1.0 : 1.0);
+    return result;
 }
 
-Function BLMath_compatible_atan2(in float y, in float x, out float result)
+/// @custom
+float BLMath_compatible_atan2(float y, float x)
 {
+    float result = (float)0;
     result = (x == 0.0 && y == 0.0) ? 0.0 : atan2(y, x);
+    return result;
 }
 
-Function BLMath_safe_modulo(in float a, in float b, out float result)
+/// @custom
+float BLMath_safe_modulo(float a, float b)
 {
+    float result = (float)0;
     result = (b != 0.0) ? fmod(a, b) : 0.0;
+    return result;
 }
 
-Function BLMath_safe_floored_modulo(in float a, in float b, out float result)
+/// @custom
+float BLMath_safe_floored_modulo(float a, float b)
 {
+    float result = (float)0;
     result = (b != 0.0) ? (a - floor(a / b) * b) : 0.0;
+    return result;
 }
 
-Function BLMath_wrapf(in float value, in float upper, in float lower, out float result)
+/// @custom
+float BLMath_wrapf(float value, float upper, float lower)
 {
+    float result = (float)0;
     float range = upper - lower;
     result = (range != 0.0) ? (value - range * floor((value - lower) / range)) : lower;
+    return result;
 }
 
-Function BLMath_pingpongf(in float a, in float b, out float result)
+/// @custom
+float BLMath_pingpongf(float a, float b)
 {
+    float result = (float)0;
     result = (b != 0.0) ? abs(frac((a - b) / (b * 2.0)) * b * 2.0 - b) : 0.0;
+    return result;
 }
 
-Function BLMath_smoothminf(in float a, in float b, in float k, out float result)
+/// @custom
+float BLMath_smoothminf(float a, float b, float k)
 {
+    float result = (float)0;
     if (k != 0.0) {
         float h = max(k - abs(a - b), 0.0) / k;
         result = min(a, b) - h * h * h * k * (1.0 / 6.0);
@@ -86,6 +118,7 @@ Function BLMath_smoothminf(in float a, in float b, in float k, out float result)
     else {
         result = min(a, b);
     }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -105,8 +138,10 @@ Function BLMath_smoothminf(in float a, in float b, in float k, out float result)
 // smooth min/max, Max for Wrap. Unused by everything else.
 // ---------------------------------------------------------------------------------------------
 
-Function BLMath_op(in float operation, in float a, in float b, in float c, out float result)
+/// @custom
+float BLMath_op(float operation, float a, float b, float c)
 {
+    float result = (float)0;
     int op = int(operation);
 
     if (op == 0)       { result = a + b; }
@@ -155,6 +190,7 @@ Function BLMath_op(in float operation, in float a, in float b, in float c, out f
     else if (op == 39) { result = a * (3.14159265358979324 / 180.0); }
     else if (op == 40) { result = a * (180.0 / 3.14159265358979324); }
     else               { result = 0.0; }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -171,28 +207,39 @@ Function BLMath_op(in float operation, in float a, in float b, in float c, out f
 // always produced, as they are on the node.
 // ---------------------------------------------------------------------------------------------
 
-Function BLMath_safe_divide3(in float3 a, in float3 b, out float3 result)
+/// @custom
+float3 BLMath_safe_divide3(float3 a, float3 b)
 {
+    float3 result = (float3)0;
     result = float3((b.x != 0.0) ? a.x / b.x : 0.0,
                     (b.y != 0.0) ? a.y / b.y : 0.0,
                     (b.z != 0.0) ? a.z / b.z : 0.0);
+    return result;
 }
 
-Function BLMath_safe_normalize3(in float3 a, out float3 result)
+/// @custom
+float3 BLMath_safe_normalize3(float3 a)
 {
+    float3 result = (float3)0;
     float t = length(a);
     result = (t != 0.0) ? (a * (1.0 / t)) : a;
+    return result;
 }
 
-Function BLMath_safe_fmod3(in float3 a, in float3 b, out float3 result)
+/// @custom
+float3 BLMath_safe_fmod3(float3 a, float3 b)
 {
+    float3 result = (float3)0;
     result = float3((b.x != 0.0) ? fmod(a.x, b.x) : 0.0,
                     (b.y != 0.0) ? fmod(a.y, b.y) : 0.0,
                     (b.z != 0.0) ? fmod(a.z, b.z) : 0.0);
+    return result;
 }
 
-Function BLMath_wrap3(in float3 value, in float3 upper, in float3 lower, out float3 result)
+/// @custom
+float3 BLMath_wrap3(float3 value, float3 upper, float3 lower)
 {
+    float3 result = (float3)0;
     float3 d = value - lower;
     float3 r = upper - lower;
     // safe_floored_fmod, component-wise
@@ -200,11 +247,13 @@ Function BLMath_wrap3(in float3 value, in float3 upper, in float3 lower, out flo
     float wy = (r.y != 0.0) ? (d.y - floor(d.y / r.y) * r.y) : 0.0;
     float wz = (r.z != 0.0) ? (d.z - floor(d.z / r.z) * r.z) : 0.0;
     result = float3(wx, wy, wz) + lower;
+    return result;
 }
 
-Function BLMath_vector_op(in float operation, in float3 a, in float3 b, in float3 c,
-                        in float param1, out float outValue, out float3 outVector)
+/// @custom
+float BLMath_vector_op(float operation, float3 a, float3 b, float3 c, float param1, out float3 outVector)
 {
+    float outValue = (float)0;
     int op = int(operation);
     outValue = 0.0;
     outVector = float3(0.0, 0.0, 0.0);
@@ -262,6 +311,7 @@ Function BLMath_vector_op(in float operation, in float3 a, in float3 b, in float
                            BLMath_safe_powf(a.y, b.y),
                            BLMath_safe_powf(a.z, b.z));
     }
+    return outValue;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -272,17 +322,20 @@ Function BLMath_vector_op(in float operation, in float3 a, in float3 b, in float
 // does not, which is the whole difference between them.
 // ---------------------------------------------------------------------------------------------
 
-Function BLMath_smootherstep(in float edge0, in float edge1, in float x, out float result)
+/// @custom
+float BLMath_smootherstep(float edge0, float edge1, float x)
 {
+    float result = (float)0;
     float d = edge1 - edge0;
     float t = clamp((d != 0.0) ? ((x - edge0) / d) : 0.0, 0.0, 1.0);
     result = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    return result;
 }
 
-Function BLMath_map_range(in float value, in float fromMin, in float fromMax, in float toMin,
-                        in float toMax, in float steps, in float interpolation,
-                        in float doClamp, out float result)
+/// @custom
+float BLMath_map_range(float value, float fromMin, float fromMax, float toMin, float toMax, float steps, float interpolation, float doClamp)
 {
+    float result = (float)0;
     if (fromMax == fromMin) {
         // Upstream returns zero rather than dividing — not the clamped endpoint.
         result = 0.0;
@@ -321,49 +374,53 @@ Function BLMath_map_range(in float value, in float fromMin, in float fromMax, in
         }
         result = mapped;
     }
+    return result;
 }
 
-Function BLMath_clamp(in float value, in float lo, in float hi, in float type, out float result)
+/// @custom
+float BLMath_clamp(float value, float lo, float hi, float type)
 {
+    float result = (float)0;
     if (int(type) == 1 && lo > hi) {
         result = clamp(value, hi, lo);
     }
     else {
         result = clamp(value, lo, hi);
     }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------------------------
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::Math
+void BL_Math(float operation, float a, float b, float c, float doClamp, out float value)
 {
-    Function Math(in float operation, in float a, in float b, in float c, in float doClamp,
-                  out float value)
-    {
-        float r = BLMath_op(operation, a, b, c);
-        // The node's Clamp checkbox clamps the *result* to 0..1, unrelated to the Clamp node.
-        value = (doClamp != 0.0) ? saturate(r) : r;
-    }
+    float r = BLMath_op(operation, a, b, c);
+    // The node's Clamp checkbox clamps the *result* to 0..1, unrelated to the Clamp node.
+    value = (doClamp != 0.0) ? saturate(r) : r;
+}
 
-    Function VectorMath(in float operation, in float3 a, in float3 b, in float3 c,
-                        in float scaleOrIor, out float value, out float3 vec)
-    {
-        BLMath_vector_op(operation, a, b, c, scaleOrIor, value, vec);
-    }
+/// @custom
+/// @name BL::VectorMath
+void BL_VectorMath(float operation, float3 a, float3 b, float3 c, float scaleOrIor, out float value, out float3 vec)
+{
+    value = BLMath_vector_op(operation, a, b, c, scaleOrIor, vec);
+}
 
-    Function MapRange(in float value, in float fromMin, in float fromMax, in float toMin,
-                      in float toMax, in float steps, in float interpolation, in float doClamp,
-                      out float result)
-    {
-        result = BLMath_map_range(value, fromMin, fromMax, toMin, toMax, steps, interpolation,
-                                  doClamp);
-    }
+/// @custom
+/// @name BL::MapRange
+void BL_MapRange(float value, float fromMin, float fromMax, float toMin, float toMax, float steps, float interpolation, float doClamp, out float result)
+{
+    result = BLMath_map_range(value, fromMin, fromMax, toMin, toMax, steps, interpolation,
+                              doClamp);
+}
 
-    Function Clamp(in float value, in float minValue, in float maxValue, in float type,
-                   out float result)
-    {
-        result = BLMath_clamp(value, minValue, maxValue, type);
-    }
+/// @custom
+/// @name BL::Clamp
+void BL_Clamp(float value, float minValue, float maxValue, float type, out float result)
+{
+    result = BLMath_clamp(value, minValue, maxValue, type);
 }

@@ -51,46 +51,60 @@
 // deliberately absent rather than approximated. Object with a non-identity object-instancer
 // transform is likewise out of scope.
 
-import "Hash.dsh";
+#include "Hash.dsh"
 
 // ---------------------------------------------------------------------------------------------
 // The conversion itself — plain arithmetic, no scene inputs, so it is testable in isolation.
 // ---------------------------------------------------------------------------------------------
 
 // A position in Unreal local space (centimetres) to Blender object space (metres).
-Function BLSpace_point_from_unreal(in float3 ueLocal, in float unitScale, out float3 result)
+/// @custom
+float3 BLSpace_point_from_unreal(float3 ueLocal, float unitScale)
 {
+    float3 result = (float3)0;
     float s = (unitScale != 0.0) ? (1.0 / unitScale) : 0.0;
     result = float3(ueLocal.x, -ueLocal.y, ueLocal.z) * s;
+    return result;
 }
 
 // The inverse, for feeding a Blender-space result back into Unreal.
-Function BLSpace_point_to_unreal(in float3 blender, in float unitScale, out float3 result)
+/// @custom
+float3 BLSpace_point_to_unreal(float3 blender, float unitScale)
 {
+    float3 result = (float3)0;
     result = float3(blender.x, -blender.y, blender.z) * unitScale;
+    return result;
 }
 
 // A direction. Same handedness flip, no unit scale — a direction has no length in metres worth
 // preserving, and callers normalise.
-Function BLSpace_dir_from_unreal(in float3 ueDir, out float3 result)
+/// @custom
+float3 BLSpace_dir_from_unreal(float3 ueDir)
 {
+    float3 result = (float3)0;
     result = float3(ueDir.x, -ueDir.y, ueDir.z);
+    return result;
 }
 
-Function BLSpace_dir_to_unreal(in float3 blenderDir, out float3 result)
+/// @custom
+float3 BLSpace_dir_to_unreal(float3 blenderDir)
 {
+    float3 result = (float3)0;
     result = float3(blenderDir.x, -blenderDir.y, blenderDir.z);
+    return result;
 }
 
 // Normalise into the bounding box, then correct for the Y negation as derived above.
-Function BLSpace_generated(in float3 ueLocal, in float3 boundsMin, in float3 boundsMax,
-                        out float3 result)
+/// @custom
+float3 BLSpace_generated(float3 ueLocal, float3 boundsMin, float3 boundsMax)
 {
+    float3 result = (float3)0;
     float3 extent = boundsMax - boundsMin;
     float3 t = float3((extent.x != 0.0) ? (ueLocal.x - boundsMin.x) / extent.x : 0.0,
                       (extent.y != 0.0) ? (ueLocal.y - boundsMin.y) / extent.y : 0.0,
                       (extent.z != 0.0) ? (ueLocal.z - boundsMin.z) / extent.z : 0.0);
     result = float3(t.x, 1.0 - t.y, t.z);
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -102,52 +116,59 @@ Function BLSpace_generated(in float3 ueLocal, in float3 boundsMin, in float3 bou
 // `unitScale` is Unreal units per Blender unit; 100 for a default export.
 // ---------------------------------------------------------------------------------------------
 
-Namespace(Name = "BL")
+// Blender's Generated: the undeformed position normalised into the object's bounding box.
+// Pre-skinned on both sides — Blender evaluates it before modifiers, Unreal's
+// PreSkinnedPosition and PreSkinnedLocalBounds are before skinning — so an animated mesh does
+// not swim through its own texture.
+/// @custom
+/// @name BL::CoordGenerated
+void BL_CoordGenerated(out float3 result)
 {
-    // Blender's Generated: the undeformed position normalised into the object's bounding box.
-    // Pre-skinned on both sides — Blender evaluates it before modifiers, Unreal's
-    // PreSkinnedPosition and PreSkinnedLocalBounds are before skinning — so an animated mesh does
-    // not swim through its own texture.
-    GraphFunction CoordGenerated(out float3 result)
-    {
-        float3 localPos = UE.Expression(Class="PreSkinnedPosition", OutputType="float3");
-        float3 boundsMin = UE.Expression(Class="PreSkinnedLocalBounds", Output="Min",
-                                         OutputType="float3");
-        float3 boundsMax = UE.Expression(Class="PreSkinnedLocalBounds", Output="Max",
-                                         OutputType="float3");
-        result = BLSpace_generated(localPos, boundsMin, boundsMax);
-    }
+    float3 localPos = UE.PreSkinnedPosition();
+    float3 boundsMin = UE.PreSkinnedLocalBounds().Min;
+    float3 boundsMax = UE.PreSkinnedLocalBounds().Max;
+    result = BLSpace_generated(localPos, boundsMin, boundsMax);
+}
 
-    // Blender's Object: position in object space, origin at the object origin, in metres.
-    GraphFunction CoordObject(in float unitScale, out float3 result)
-    {
-        float3 localPos = UE.Expression(Class="PreSkinnedPosition", OutputType="float3");
-        result = BLSpace_point_from_unreal(localPos, unitScale);
-    }
+// Blender's Object: position in object space, origin at the object origin, in metres.
+/// @custom
+/// @name BL::CoordObject
+void BL_CoordObject(float unitScale, out float3 result)
+{
+    float3 localPos = UE.PreSkinnedPosition();
+    result = BLSpace_point_from_unreal(localPos, unitScale);
+}
 
-    // Blender's UV. The V flip is the origin convention, nothing to do with handedness.
-    GraphFunction CoordUV(in float uvIndex, out float3 result)
-    {
-        float2 uv = UE.TexCoord(Index=0);
-        result = float3(uv.x, 1.0 - uv.y, 0.0);
-    }
+// Blender's UV. The V flip is the origin convention, nothing to do with handedness.
+/// @custom
+/// @name BL::CoordUV
+void BL_CoordUV(float uvIndex, out float3 result)
+{
+    float2 uv = UE.TexCoord(Index = 0);
+    result = float3(uv.x, 1.0 - uv.y, 0.0);
+}
 
-    // Blender's Normal output: the object-space normal, in Blender's axes.
-    GraphFunction CoordNormal(out float3 result)
-    {
-        float3 n = UE.Expression(Class="PreSkinnedNormal", OutputType="float3");
-        result = BLSpace_dir_from_unreal(n);
-    }
+// Blender's Normal output: the object-space normal, in Blender's axes.
+/// @custom
+/// @name BL::CoordNormal
+void BL_CoordNormal(out float3 result)
+{
+    float3 n = UE.PreSkinnedNormal();
+    result = BLSpace_dir_from_unreal(n);
+}
 
-    // Not a Texture Coordinate output, but the other half of the round trip: take a vector a
-    // Blender-space node produced and put it back into Unreal's space.
-    GraphFunction ToUnrealPoint(in float3 blender, in float unitScale, out float3 result)
-    {
-        result = BLSpace_point_to_unreal(blender, unitScale);
-    }
+// Not a Texture Coordinate output, but the other half of the round trip: take a vector a
+// Blender-space node produced and put it back into Unreal's space.
+/// @custom
+/// @name BL::ToUnrealPoint
+void BL_ToUnrealPoint(float3 blender, float unitScale, out float3 result)
+{
+    result = BLSpace_point_to_unreal(blender, unitScale);
+}
 
-    GraphFunction ToUnrealDir(in float3 blenderDir, out float3 result)
-    {
-        result = BLSpace_dir_to_unreal(blenderDir);
-    }
+/// @custom
+/// @name BL::ToUnrealDir
+void BL_ToUnrealDir(float3 blenderDir, out float3 result)
+{
+    result = BLSpace_dir_to_unreal(blenderDir);
 }

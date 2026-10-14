@@ -6,9 +6,10 @@
 // so pass a literal unless you have a reason not to — the ladder below is a chain of dependent
 // branches and a dynamic depth compiles all of them.
 
-Function BLMagic_color(in float3 p, in float scale, in float depth, in float distortion,
-                        out float3 result)
+/// @custom
+float3 BLMagic_color(float3 p, float scale, float depth, float distortion)
 {
+    float3 result = (float3)0;
     // Wrapping into [-2pi, 2pi] first: without it, (px+py+pz)*5 overflows into Inf for large
     // coordinates and sin/cos return NaN, and a large disparity between components shows up as
     // banding from the smaller one losing precision.
@@ -84,14 +85,13 @@ Function BLMagic_color(in float3 p, in float scale, in float depth, in float dis
     }
 
     result = float3(0.5 - x, 0.5 - y, 0.5 - z);
+    return result;
 }
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::TexMagic
+void BL_TexMagic(float3 co, float scale, float depth, float distortion, out float fac, out float3 color)
 {
-    Function TexMagic(in float3 co, in float scale, in float depth, in float distortion,
-                      out float fac, out float3 color)
-    {
-        color = BLMagic_color(co, scale, depth, distortion);
-        fac = (color.x + color.y + color.z) / 3.0;
-    }
+    color = BLMagic_color(co, scale, depth, distortion);
+    fac = (color.x + color.y + color.z) / 3.0;
 }

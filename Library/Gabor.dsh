@@ -12,7 +12,7 @@
 // `polar_to_cartesian(r, t)` is `(r cos t, r sin t)`, and `spherical_to_direction(incl, azim)` is
 // the inverse of `incl = acos(z)`, `azim = sign(y) acos(x / |xy|)`.
 
-import "Hash.dsh";
+#include "Hash.dsh"
 
 // Upstream's IMPULSES_COUNT. The original paper samples a Poisson distribution per cell; Tavernier
 // showed a constant count with Bernoulli weights is better, the grid itself being the
@@ -27,9 +27,10 @@ import "Hash.dsh";
 // taken as 1: the final value is normalized anyway, and the width is not useful artistic control.
 // The Gaussian truncates at pi, and is windowed with a Hann window to kill the discontinuity —
 // truncation alone produces visible artifacts once the result is differentiated for bump mapping.
-Function BLGabor_kernel_2d(in float2 position, in float frequency, in float orientation,
-                        out float2 result)
+/// @custom
+float2 BLGabor_kernel_2d(float2 position, float frequency, float orientation)
 {
+    float2 result = (float2)0;
     float distanceSquared = dot(position, position);
     float hannWindow = 0.5 + 0.5 * cos(3.14159265358979324 * distanceSquared);
     float gaussianEnvelope = exp(-3.14159265358979324 * distanceSquared);
@@ -38,19 +39,24 @@ Function BLGabor_kernel_2d(in float2 position, in float frequency, in float orie
     float2 freqVector = float2(frequency * cos(orientation), frequency * sin(orientation));
     float angle = 2.0 * 3.14159265358979324 * dot(position, freqVector);
     result = float2(windowed * cos(angle), windowed * sin(angle));
+    return result;
 }
 
 // Equation (9): the standard deviation of the amplitude distribution. The integral of the squared
 // kernel is almost constant above frequency 1 and converges to 0.25, so upstream uses the limit.
 // The second moment is 0.5 because the weights are a fair Bernoulli.
-Function BLGabor_stddev_2d(out float result)
+/// @custom
+float BLGabor_stddev_2d()
 {
+    float result = (float)0;
     result = sqrt(8.0 * 0.5 * 0.25);
+    return result;
 }
 
-Function BLGabor_cell_2d(in float2 cell, in float2 position, in float frequency,
-                        in float isotropy, in float baseOrientation, out float2 result)
+/// @custom
+float2 BLGabor_cell_2d(float2 cell, float2 position, float frequency, float isotropy, float baseOrientation)
 {
+    float2 result = (float2)0;
     float2 noise = float2(0.0, 0.0);
 
     [loop] for (int i = 0; i < 8; i++) {
@@ -76,11 +82,13 @@ Function BLGabor_cell_2d(in float2 cell, in float2 position, in float frequency,
     }
 
     result = noise;
+    return result;
 }
 
-Function BLGabor_noise_2d(in float2 coordinates, in float frequency, in float isotropy,
-                        in float baseOrientation, out float2 result)
+/// @custom
+float2 BLGabor_noise_2d(float2 coordinates, float frequency, float isotropy, float baseOrientation)
 {
+    float2 result = (float2)0;
     float2 cellPosition = floor(coordinates);
     float2 localPosition = coordinates - cellPosition;
 
@@ -97,6 +105,7 @@ Function BLGabor_noise_2d(in float2 coordinates, in float frequency, in float is
     }}
 
     result = sum;
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -105,9 +114,10 @@ Function BLGabor_noise_2d(in float2 coordinates, in float frequency, in float is
 
 // In 3D the orientation is already a unit frequency vector, so unlike 2D there is no
 // (cos w, sin w) to build — it just gets scaled by the frequency.
-Function BLGabor_kernel_3d(in float3 position, in float frequency, in float3 orientation,
-                        out float2 result)
+/// @custom
+float2 BLGabor_kernel_3d(float3 position, float frequency, float3 orientation)
 {
+    float2 result = (float2)0;
     float distanceSquared = dot(position, position);
     float hannWindow = 0.5 + 0.5 * cos(3.14159265358979324 * distanceSquared);
     float gaussianEnvelope = exp(-3.14159265358979324 * distanceSquared);
@@ -116,19 +126,24 @@ Function BLGabor_kernel_3d(in float3 position, in float frequency, in float3 ori
     float3 freqVector = frequency * orientation;
     float angle = 2.0 * 3.14159265358979324 * dot(position, freqVector);
     result = float2(windowed * cos(angle), windowed * sin(angle));
+    return result;
 }
 
 // Same derivation as 2D with a triple integral: the denominator becomes 2^(5/2), so the limit is
 // 1 / (4 sqrt 2) instead of 1/4.
-Function BLGabor_stddev_3d(out float result)
+/// @custom
+float BLGabor_stddev_3d()
 {
+    float result = (float)0;
     result = sqrt(8.0 * 0.5 * (1.0 / (4.0 * 1.41421356237309505)));
+    return result;
 }
 
 // Randomised in spherical coordinates so the distribution stays uniform.
-Function BLGabor_orientation_3d(in float3 orientation, in float isotropy, in float4 seed,
-                        out float3 result)
+/// @custom
+float3 BLGabor_orientation_3d(float3 orientation, float isotropy, float4 seed)
 {
+    float3 result = (float3)0;
     if (isotropy == 0.0) {
         result = orientation;
     }
@@ -150,11 +165,13 @@ Function BLGabor_orientation_3d(in float3 orientation, in float isotropy, in flo
                         sin(inclination) * sin(azimuth),
                         cos(inclination));
     }
+    return result;
 }
 
-Function BLGabor_cell_3d(in float3 cell, in float3 position, in float frequency,
-                        in float isotropy, in float3 baseOrientation, out float2 result)
+/// @custom
+float2 BLGabor_cell_3d(float3 cell, float3 position, float frequency, float isotropy, float3 baseOrientation)
 {
+    float2 result = (float2)0;
     float2 noise = float2(0.0, 0.0);
 
     [loop] for (int i = 0; i < 8; i++) {
@@ -176,11 +193,13 @@ Function BLGabor_cell_3d(in float3 cell, in float3 position, in float frequency,
     }
 
     result = noise;
+    return result;
 }
 
-Function BLGabor_noise_3d(in float3 coordinates, in float frequency, in float isotropy,
-                        in float3 baseOrientation, out float2 result)
+/// @custom
+float2 BLGabor_noise_3d(float3 coordinates, float frequency, float isotropy, float3 baseOrientation)
 {
+    float2 result = (float2)0;
     float3 cellPosition = floor(coordinates);
     float3 localPosition = coordinates - cellPosition;
 
@@ -200,6 +219,7 @@ Function BLGabor_noise_3d(in float3 coordinates, in float frequency, in float is
     }}}
 
     result = sum;
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -213,40 +233,37 @@ Function BLGabor_noise_3d(in float3 coordinates, in float frequency, in float is
 // The normalization divides by six standard deviations — upstream's empirical choice.
 // ---------------------------------------------------------------------------------------------
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::TexGabor2D
+void BL_TexGabor2D(float3 co, float scale, float frequency, float anisotropy, float orientation, out float value, out float phase, out float intensity)
 {
-    Function TexGabor2D(in float3 co, in float scale, in float frequency, in float anisotropy,
-                        in float orientation,
-                        out float value, out float phase, out float intensity)
-    {
-        float3 scaled = co * scale;
-        float isotropy = 1.0 - clamp(anisotropy, 0.0, 1.0);
-        float f = max(0.001, frequency);
+    float3 scaled = co * scale;
+    float isotropy = 1.0 - clamp(anisotropy, 0.0, 1.0);
+    float f = max(0.001, frequency);
 
-        float2 phasor = BLGabor_noise_2d(float2(scaled.x, scaled.y), f, isotropy, orientation);
-        float stddev = BLGabor_stddev_2d();
-        float normalization = 6.0 * stddev;
+    float2 phasor = BLGabor_noise_2d(float2(scaled.x, scaled.y), f, isotropy, orientation);
+    float stddev = BLGabor_stddev_2d();
+    float normalization = 6.0 * stddev;
 
-        value = (phasor.y / normalization) * 0.5 + 0.5;
-        phase = (atan2(phasor.y, phasor.x) + 3.14159265358979324) / (2.0 * 3.14159265358979324);
-        intensity = length(phasor) / normalization;
-    }
+    value = (phasor.y / normalization) * 0.5 + 0.5;
+    phase = (atan2(phasor.y, phasor.x) + 3.14159265358979324) / (2.0 * 3.14159265358979324);
+    intensity = length(phasor) / normalization;
+}
 
-    Function TexGabor3D(in float3 co, in float scale, in float frequency, in float anisotropy,
-                        in float3 orientation,
-                        out float value, out float phase, out float intensity)
-    {
-        float3 scaled = co * scale;
-        float isotropy = 1.0 - clamp(anisotropy, 0.0, 1.0);
-        float f = max(0.001, frequency);
+/// @custom
+/// @name BL::TexGabor3D
+void BL_TexGabor3D(float3 co, float scale, float frequency, float anisotropy, float3 orientation, out float value, out float phase, out float intensity)
+{
+    float3 scaled = co * scale;
+    float isotropy = 1.0 - clamp(anisotropy, 0.0, 1.0);
+    float f = max(0.001, frequency);
 
-        float3 dir = normalize(orientation);
-        float2 phasor = BLGabor_noise_3d(scaled, f, isotropy, dir);
-        float stddev = BLGabor_stddev_3d();
-        float normalization = 6.0 * stddev;
+    float3 dir = normalize(orientation);
+    float2 phasor = BLGabor_noise_3d(scaled, f, isotropy, dir);
+    float stddev = BLGabor_stddev_3d();
+    float normalization = 6.0 * stddev;
 
-        value = (phasor.y / normalization) * 0.5 + 0.5;
-        phase = (atan2(phasor.y, phasor.x) + 3.14159265358979324) / (2.0 * 3.14159265358979324);
-        intensity = length(phasor) / normalization;
-    }
+    value = (phasor.y / normalization) * 0.5 + 0.5;
+    phase = (atan2(phasor.y, phasor.x) + 3.14159265358979324) / (2.0 * 3.14159265358979324);
+    intensity = length(phasor) / normalization;
 }

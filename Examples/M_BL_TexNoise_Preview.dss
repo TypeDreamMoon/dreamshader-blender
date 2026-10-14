@@ -1,0 +1,49 @@
+// Noise Texture, 3D, driven from UV — the smallest thing that shows the node working.
+//
+// Examples inside a package are never compiled by the plugin. Copy this out of
+// DShader/Packages into DShader/ (or any subdirectory that is not Packages) to build it.
+
+#include "@typedreammoon/dreamshader-blender/Library/Noise.dsh"
+
+#pragma material(Domain = "Surface", ShadingModel = "Unlit")
+
+/// @group Noise Texture | Inputs
+/// @sort 10
+/// @desc Blender's Scale input — multiplies the coordinate
+uniform float Scale = 5.0;
+/// @group Noise Texture | Inputs
+/// @sort 20
+/// @desc Octave count, clamped to 0..15 as in Blender
+uniform float Detail = 2.0;
+/// @group Noise Texture | Inputs
+/// @sort 30
+/// @desc Amplitude falloff per octave
+uniform float Roughness = 0.5;
+/// @group Noise Texture | Inputs
+/// @sort 40
+/// @desc Frequency gain per octave
+uniform float Lacunarity = 2.0;
+/// @group Noise Texture | Inputs
+/// @sort 50
+/// @desc Warps the coordinate by noise before sampling
+uniform float Distortion = 0.0;
+// Not named `Normalize`: the 19 math builtins shadow same-named properties inside a
+// Graph block, silently. `normalize` is one of them.
+/// @group Noise Texture | Options
+/// @sort 60
+/// @desc Blender's Normalize checkbox — 1 remaps to 0..1, 0 leaves it signed
+uniform float NormalizeOutput = 1.0;
+
+export void M_BL_TexNoise_Preview(inout material Base)
+{
+    float3 EmissiveColor = float3(0, 0, 0);
+    float2 uv = UE.TexCoord(Index = 0);
+    float3 p = float3(uv.x, uv.y, 0.0);
+
+    float Fac;
+    float3 Color;
+    BL::TexNoise3D(p, Scale, Detail, Roughness, Lacunarity, Distortion, NormalizeOutput, Fac, Color);
+
+    EmissiveColor = float3(Fac, Fac, Fac);
+    Base.EmissiveColor = EmissiveColor;
+}

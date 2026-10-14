@@ -15,66 +15,84 @@
 // Multifractal, Ridged Multifractal, Hetero Terrain) live in fractal_noise.h alongside fBM and
 // are the next port; see the roadmap in README.md.
 
-import "Hash.dsh";
+#include "Hash.dsh"
 
 // ---------------------------------------------------------------------------------------------
 // Perlin noise
 // ---------------------------------------------------------------------------------------------
 
-Function BLNoise_fade(in float t, out float result)
+/// @custom
+float BLNoise_fade(float t)
 {
+    float result = (float)0;
     result = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    return result;
 }
 
-Function BLNoise_grad1(in uint hash, in float x, out float result)
+/// @custom
+float BLNoise_grad1(uint hash, float x)
 {
+    float result = (float)0;
     uint h = hash & 15u;
     float g = 1.0 + float(h & 7u);
     result = ((h & 8u) != 0u ? -g : g) * x;
+    return result;
 }
 
-Function BLNoise_grad2(in uint hash, in float x, in float y, out float result)
+/// @custom
+float BLNoise_grad2(uint hash, float x, float y)
 {
+    float result = (float)0;
     uint h = hash & 7u;
     float u = (h < 4u) ? x : y;
     float v = 2.0 * ((h < 4u) ? y : x);
     result = ((h & 1u) != 0u ? -u : u) + ((h & 2u) != 0u ? -v : v);
+    return result;
 }
 
-Function BLNoise_grad3(in uint hash, in float x, in float y, in float z, out float result)
+/// @custom
+float BLNoise_grad3(uint hash, float x, float y, float z)
 {
+    float result = (float)0;
     uint h = hash & 15u;
     float u = (h < 8u) ? x : y;
     float vt = ((h == 12u) || (h == 14u)) ? x : z;
     float v = (h < 4u) ? y : vt;
     result = ((h & 1u) != 0u ? -u : u) + ((h & 2u) != 0u ? -v : v);
+    return result;
 }
 
-Function BLNoise_grad4(in uint hash, in float x, in float y, in float z, in float w, out float result)
+/// @custom
+float BLNoise_grad4(uint hash, float x, float y, float z, float w)
 {
+    float result = (float)0;
     uint h = hash & 31u;
     float u = (h < 24u) ? x : y;
     float v = (h < 16u) ? y : z;
     float s = (h <  8u) ? z : w;
     result = ((h & 1u) != 0u ? -u : u) + ((h & 2u) != 0u ? -v : v) + ((h & 4u) != 0u ? -s : s);
+    return result;
 }
 
-Function BLNoise_bi_mix(in float v0, in float v1, in float v2, in float v3,
-                        in float x, in float y, out float result)
+/// @custom
+float BLNoise_bi_mix(float v0, float v1, float v2, float v3, float x, float y)
 {
+    float result = (float)0;
     float x1 = 1.0 - x;
     result = (1.0 - y) * (v0 * x1 + v1 * x) + y * (v2 * x1 + v3 * x);
+    return result;
 }
 
-Function BLNoise_tri_mix(in float v0, in float v1, in float v2, in float v3,
-                         in float v4, in float v5, in float v6, in float v7,
-                         in float x, in float y, in float z, out float result)
+/// @custom
+float BLNoise_tri_mix(float v0, float v1, float v2, float v3, float v4, float v5, float v6, float v7, float x, float y, float z)
 {
+    float result = (float)0;
     float x1 = 1.0 - x;
     float y1 = 1.0 - y;
     float z1 = 1.0 - z;
     result = z1 * (y1 * (v0 * x1 + v1 * x) + y * (v2 * x1 + v3 * x)) +
              z  * (y1 * (v4 * x1 + v5 * x) + y * (v6 * x1 + v7 * x));
+    return result;
 }
 
 // floorfrac is inlined at each site: upstream returns the fraction and writes the integer part
@@ -86,8 +104,10 @@ Function BLNoise_tri_mix(in float v0, in float v1, in float v2, in float v3,
 // outermost call in an expression and emits the inner one as an undefined symbol. Nesting inside
 // an HLSL intrinsic (`lerp`, `float3(...)`, `asuint(...)`) is fine. See README.md, "Porting rules".
 
-Function BLNoise_perlin_1d(in float x, out float result)
+/// @custom
+float BLNoise_perlin_1d(float x)
 {
+    float result = (float)0;
     float flx = floor(x);
     int X = int(flx);
     float fx = x - flx;
@@ -101,10 +121,13 @@ Function BLNoise_perlin_1d(in float x, out float result)
     float g1 = BLNoise_grad1(h1, fx - 1.0);
 
     result = lerp(g0, g1, u);
+    return result;
 }
 
-Function BLNoise_perlin_2d(in float x, in float y, out float result)
+/// @custom
+float BLNoise_perlin_2d(float x, float y)
 {
+    float result = (float)0;
     float flx = floor(x);
     float fly = floor(y);
     int X = int(flx);
@@ -126,10 +149,13 @@ Function BLNoise_perlin_2d(in float x, in float y, out float result)
     float g11 = BLNoise_grad2(h11, fx - 1.0, fy - 1.0);
 
     result = BLNoise_bi_mix(g00, g10, g01, g11, u, v);
+    return result;
 }
 
-Function BLNoise_perlin_3d(in float x, in float y, in float z, out float result)
+/// @custom
+float BLNoise_perlin_3d(float x, float y, float z)
 {
+    float result = (float)0;
     float flx = floor(x);
     float fly = floor(y);
     float flz = floor(z);
@@ -163,10 +189,13 @@ Function BLNoise_perlin_3d(in float x, in float y, in float z, out float result)
     float g111 = BLNoise_grad3(h111, fx - 1.0, fy - 1.0, fz - 1.0);
 
     result = BLNoise_tri_mix(g000, g100, g010, g110, g001, g101, g011, g111, u, v, w);
+    return result;
 }
 
-Function BLNoise_perlin_4d(in float x, in float y, in float z, in float w, out float result)
+/// @custom
+float BLNoise_perlin_4d(float x, float y, float z, float w)
 {
+    float result = (float)0;
     float flx = floor(x);
     float fly = floor(y);
     float flz = floor(z);
@@ -226,6 +255,7 @@ Function BLNoise_perlin_4d(in float x, in float y, in float z, in float w, out f
     float hi = BLNoise_tri_mix(g0001, g1001, g0101, g1101, g0011, g1011, g0111, g1111, u, v, t);
 
     result = lerp(lo, hi, s);
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -237,32 +267,44 @@ Function BLNoise_perlin_4d(in float x, in float y, in float z, in float w, out f
 // upstream's, and reproducing it matters for parity even though it is invisible in practice.
 // ---------------------------------------------------------------------------------------------
 
-Function BLNoise_snoise_1d(in float p, out float result)
+/// @custom
+float BLNoise_snoise_1d(float p)
 {
+    float result = (float)0;
     float correction = 0.5 * step(1000000.0, abs(p));
     float q = fmod(p, 100000.0) + correction;
     result = 0.2500 * BLNoise_perlin_1d(q);
+    return result;
 }
 
-Function BLNoise_snoise_2d(in float2 p, out float result)
+/// @custom
+float BLNoise_snoise_2d(float2 p)
 {
+    float result = (float)0;
     float2 correction = 0.5 * step(1000000.0, abs(p));
     float2 q = fmod(p, 100000.0) + correction;
     result = 0.6616 * BLNoise_perlin_2d(q.x, q.y);
+    return result;
 }
 
-Function BLNoise_snoise_3d(in float3 p, out float result)
+/// @custom
+float BLNoise_snoise_3d(float3 p)
 {
+    float result = (float)0;
     float3 correction = 0.5 * step(1000000.0, abs(p));
     float3 q = fmod(p, 100000.0) + correction;
     result = 0.9820 * BLNoise_perlin_3d(q.x, q.y, q.z);
+    return result;
 }
 
-Function BLNoise_snoise_4d(in float4 p, out float result)
+/// @custom
+float BLNoise_snoise_4d(float4 p)
 {
+    float result = (float)0;
     float4 correction = 0.5 * step(1000000.0, abs(p));
     float4 q = fmod(p, 100000.0) + correction;
     result = 0.8344 * BLNoise_perlin_4d(q.x, q.y, q.z, q.w);
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -275,9 +317,10 @@ Function BLNoise_snoise_4d(in float4 p, out float result)
 // matching Blender's own UI range, so the loop runs at most 16 times.
 // ---------------------------------------------------------------------------------------------
 
-Function BLNoise_fbm_1d(in float p, in float detail, in float roughness, in float lacunarity,
-                        in float normalize01, out float result)
+/// @custom
+float BLNoise_fbm_1d(float p, float detail, float roughness, float lacunarity, float normalize01)
 {
+    float result = (float)0;
     float fscale = 1.0;
     float amp = 1.0;
     float maxamp = 0.0;
@@ -303,11 +346,13 @@ Function BLNoise_fbm_1d(in float p, in float detail, in float roughness, in floa
     else {
         result = (normalize01 != 0.0) ? (0.5 * sum / maxamp + 0.5) : sum;
     }
+    return result;
 }
 
-Function BLNoise_fbm_2d(in float2 p, in float detail, in float roughness, in float lacunarity,
-                        in float normalize01, out float result)
+/// @custom
+float BLNoise_fbm_2d(float2 p, float detail, float roughness, float lacunarity, float normalize01)
 {
+    float result = (float)0;
     float fscale = 1.0;
     float amp = 1.0;
     float maxamp = 0.0;
@@ -333,11 +378,13 @@ Function BLNoise_fbm_2d(in float2 p, in float detail, in float roughness, in flo
     else {
         result = (normalize01 != 0.0) ? (0.5 * sum / maxamp + 0.5) : sum;
     }
+    return result;
 }
 
-Function BLNoise_fbm_3d(in float3 p, in float detail, in float roughness, in float lacunarity,
-                        in float normalize01, out float result)
+/// @custom
+float BLNoise_fbm_3d(float3 p, float detail, float roughness, float lacunarity, float normalize01)
 {
+    float result = (float)0;
     float fscale = 1.0;
     float amp = 1.0;
     float maxamp = 0.0;
@@ -363,11 +410,13 @@ Function BLNoise_fbm_3d(in float3 p, in float detail, in float roughness, in flo
     else {
         result = (normalize01 != 0.0) ? (0.5 * sum / maxamp + 0.5) : sum;
     }
+    return result;
 }
 
-Function BLNoise_fbm_4d(in float4 p, in float detail, in float roughness, in float lacunarity,
-                        in float normalize01, out float result)
+/// @custom
+float BLNoise_fbm_4d(float4 p, float detail, float roughness, float lacunarity, float normalize01)
 {
+    float result = (float)0;
     float fscale = 1.0;
     float amp = 1.0;
     float maxamp = 0.0;
@@ -393,6 +442,7 @@ Function BLNoise_fbm_4d(in float4 p, in float detail, in float roughness, in flo
     else {
         result = (normalize01 != 0.0) ? (0.5 * sum / maxamp + 0.5) : sum;
     }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -403,9 +453,10 @@ Function BLNoise_fbm_4d(in float4 p, in float detail, in float roughness, in flo
 // and a single scaled multiply round differently, and parity depends on matching each.
 // ---------------------------------------------------------------------------------------------
 
-Function BLNoise_multi_fractal_1d(in float p, in float detail, in float roughness,
-                        in float lacunarity, out float result)
+/// @custom
+float BLNoise_multi_fractal_1d(float p, float detail, float roughness, float lacunarity)
 {
+    float result = (float)0;
     float q = p;
     float value = 1.0;
     float pwr = 1.0;
@@ -425,12 +476,13 @@ Function BLNoise_multi_fractal_1d(in float p, in float detail, in float roughnes
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_multi_fractal_2d(in float2 p, in float detail, in float roughness,
-                        in float lacunarity, out float result)
+/// @custom
+float BLNoise_multi_fractal_2d(float2 p, float detail, float roughness, float lacunarity)
 {
+    float result = (float)0;
     float2 q = p;
     float value = 1.0;
     float pwr = 1.0;
@@ -450,12 +502,13 @@ Function BLNoise_multi_fractal_2d(in float2 p, in float detail, in float roughne
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_multi_fractal_3d(in float3 p, in float detail, in float roughness,
-                        in float lacunarity, out float result)
+/// @custom
+float BLNoise_multi_fractal_3d(float3 p, float detail, float roughness, float lacunarity)
 {
+    float result = (float)0;
     float3 q = p;
     float value = 1.0;
     float pwr = 1.0;
@@ -475,12 +528,13 @@ Function BLNoise_multi_fractal_3d(in float3 p, in float detail, in float roughne
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_multi_fractal_4d(in float4 p, in float detail, in float roughness,
-                        in float lacunarity, out float result)
+/// @custom
+float BLNoise_multi_fractal_4d(float4 p, float detail, float roughness, float lacunarity)
 {
+    float result = (float)0;
     float4 q = p;
     float value = 1.0;
     float pwr = 1.0;
@@ -500,12 +554,13 @@ Function BLNoise_multi_fractal_4d(in float4 p, in float detail, in float roughne
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_hetero_terrain_1d(in float p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, out float result)
+/// @custom
+float BLNoise_hetero_terrain_1d(float p, float detail, float roughness, float lacunarity, float offset)
 {
+    float result = (float)0;
     float q = p;
     float pwr = roughness;
 
@@ -531,12 +586,13 @@ Function BLNoise_hetero_terrain_1d(in float p, in float detail, in float roughne
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_hetero_terrain_2d(in float2 p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, out float result)
+/// @custom
+float BLNoise_hetero_terrain_2d(float2 p, float detail, float roughness, float lacunarity, float offset)
 {
+    float result = (float)0;
     float2 q = p;
     float pwr = roughness;
 
@@ -562,12 +618,13 @@ Function BLNoise_hetero_terrain_2d(in float2 p, in float detail, in float roughn
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_hetero_terrain_3d(in float3 p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, out float result)
+/// @custom
+float BLNoise_hetero_terrain_3d(float3 p, float detail, float roughness, float lacunarity, float offset)
 {
+    float result = (float)0;
     float3 q = p;
     float pwr = roughness;
 
@@ -593,12 +650,13 @@ Function BLNoise_hetero_terrain_3d(in float3 p, in float detail, in float roughn
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_hetero_terrain_4d(in float4 p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, out float result)
+/// @custom
+float BLNoise_hetero_terrain_4d(float4 p, float detail, float roughness, float lacunarity, float offset)
 {
+    float result = (float)0;
     float4 q = p;
     float pwr = roughness;
 
@@ -624,12 +682,13 @@ Function BLNoise_hetero_terrain_4d(in float4 p, in float detail, in float roughn
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_hybrid_mf_1d(in float p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, out float result)
+/// @custom
+float BLNoise_hybrid_mf_1d(float p, float detail, float roughness, float lacunarity, float offset, float gain)
 {
+    float result = (float)0;
     float q = p;
     float pwr = 1.0;
     float value = 0.0;
@@ -659,12 +718,13 @@ Function BLNoise_hybrid_mf_1d(in float p, in float detail, in float roughness,
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_hybrid_mf_2d(in float2 p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, out float result)
+/// @custom
+float BLNoise_hybrid_mf_2d(float2 p, float detail, float roughness, float lacunarity, float offset, float gain)
 {
+    float result = (float)0;
     float2 q = p;
     float pwr = 1.0;
     float value = 0.0;
@@ -694,12 +754,13 @@ Function BLNoise_hybrid_mf_2d(in float2 p, in float detail, in float roughness,
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_hybrid_mf_3d(in float3 p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, out float result)
+/// @custom
+float BLNoise_hybrid_mf_3d(float3 p, float detail, float roughness, float lacunarity, float offset, float gain)
 {
+    float result = (float)0;
     float3 q = p;
     float pwr = 1.0;
     float value = 0.0;
@@ -729,12 +790,13 @@ Function BLNoise_hybrid_mf_3d(in float3 p, in float detail, in float roughness,
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_hybrid_mf_4d(in float4 p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, out float result)
+/// @custom
+float BLNoise_hybrid_mf_4d(float4 p, float detail, float roughness, float lacunarity, float offset, float gain)
 {
+    float result = (float)0;
     float4 q = p;
     float pwr = 1.0;
     float value = 0.0;
@@ -764,12 +826,13 @@ Function BLNoise_hybrid_mf_4d(in float4 p, in float detail, in float roughness,
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_ridged_mf_1d(in float p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, out float result)
+/// @custom
+float BLNoise_ridged_mf_1d(float p, float detail, float roughness, float lacunarity, float offset, float gain)
 {
+    float result = (float)0;
     float q = p;
     float pwr = roughness;
 
@@ -793,12 +856,13 @@ Function BLNoise_ridged_mf_1d(in float p, in float detail, in float roughness,
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_ridged_mf_2d(in float2 p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, out float result)
+/// @custom
+float BLNoise_ridged_mf_2d(float2 p, float detail, float roughness, float lacunarity, float offset, float gain)
 {
+    float result = (float)0;
     float2 q = p;
     float pwr = roughness;
 
@@ -822,12 +886,13 @@ Function BLNoise_ridged_mf_2d(in float2 p, in float detail, in float roughness,
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_ridged_mf_3d(in float3 p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, out float result)
+/// @custom
+float BLNoise_ridged_mf_3d(float3 p, float detail, float roughness, float lacunarity, float offset, float gain)
 {
+    float result = (float)0;
     float3 q = p;
     float pwr = roughness;
 
@@ -851,12 +916,13 @@ Function BLNoise_ridged_mf_3d(in float3 p, in float detail, in float roughness,
     }
 
     result = value;
+    return result;
 }
 
-
-Function BLNoise_ridged_mf_4d(in float4 p, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, out float result)
+/// @custom
+float BLNoise_ridged_mf_4d(float4 p, float detail, float roughness, float lacunarity, float offset, float gain)
 {
+    float result = (float)0;
     float4 q = p;
     float pwr = roughness;
 
@@ -880,6 +946,7 @@ Function BLNoise_ridged_mf_4d(in float4 p, in float detail, in float roughness,
     }
 
     result = value;
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -895,10 +962,10 @@ Function BLNoise_ridged_mf_4d(in float4 p, in float detail, in float roughness,
 // four unused paths; only a genuinely dynamic type pays for all five.
 // ---------------------------------------------------------------------------------------------
 
-Function BLNoise_select_1d(in float p, in float detail, in float roughness, in float lacunarity,
-                        in float offset, in float gain, in float type, in float normalize01,
-                        out float result)
+/// @custom
+float BLNoise_select_1d(float p, float detail, float roughness, float lacunarity, float offset, float gain, float type, float normalize01)
 {
+    float result = (float)0;
     if (type < 0.5) {
         result = BLNoise_fbm_1d(p, detail, roughness, lacunarity, normalize01);
     }
@@ -914,13 +981,13 @@ Function BLNoise_select_1d(in float p, in float detail, in float roughness, in f
     else {
         result = BLNoise_hetero_terrain_1d(p, detail, roughness, lacunarity, offset);
     }
+    return result;
 }
 
-
-Function BLNoise_select_2d(in float2 p, in float detail, in float roughness, in float lacunarity,
-                        in float offset, in float gain, in float type, in float normalize01,
-                        out float result)
+/// @custom
+float BLNoise_select_2d(float2 p, float detail, float roughness, float lacunarity, float offset, float gain, float type, float normalize01)
 {
+    float result = (float)0;
     if (type < 0.5) {
         result = BLNoise_fbm_2d(p, detail, roughness, lacunarity, normalize01);
     }
@@ -936,13 +1003,13 @@ Function BLNoise_select_2d(in float2 p, in float detail, in float roughness, in 
     else {
         result = BLNoise_hetero_terrain_2d(p, detail, roughness, lacunarity, offset);
     }
+    return result;
 }
 
-
-Function BLNoise_select_3d(in float3 p, in float detail, in float roughness, in float lacunarity,
-                        in float offset, in float gain, in float type, in float normalize01,
-                        out float result)
+/// @custom
+float BLNoise_select_3d(float3 p, float detail, float roughness, float lacunarity, float offset, float gain, float type, float normalize01)
 {
+    float result = (float)0;
     if (type < 0.5) {
         result = BLNoise_fbm_3d(p, detail, roughness, lacunarity, normalize01);
     }
@@ -958,13 +1025,13 @@ Function BLNoise_select_3d(in float3 p, in float detail, in float roughness, in 
     else {
         result = BLNoise_hetero_terrain_3d(p, detail, roughness, lacunarity, offset);
     }
+    return result;
 }
 
-
-Function BLNoise_select_4d(in float4 p, in float detail, in float roughness, in float lacunarity,
-                        in float offset, in float gain, in float type, in float normalize01,
-                        out float result)
+/// @custom
+float BLNoise_select_4d(float4 p, float detail, float roughness, float lacunarity, float offset, float gain, float type, float normalize01)
 {
+    float result = (float)0;
     if (type < 0.5) {
         result = BLNoise_fbm_4d(p, detail, roughness, lacunarity, normalize01);
     }
@@ -980,6 +1047,7 @@ Function BLNoise_select_4d(in float4 p, in float detail, in float roughness, in 
     else {
         result = BLNoise_hetero_terrain_4d(p, detail, roughness, lacunarity, offset);
     }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -990,30 +1058,42 @@ Function BLNoise_select_4d(in float4 p, in float detail, in float roughness, in 
 // precision. The 2D/3D/4D variants all hash a float2 — that is upstream's choice, not a typo.
 // ---------------------------------------------------------------------------------------------
 
-Function BLNoise_rand_offset_1d(in float seed, out float result)
+/// @custom
+float BLNoise_rand_offset_1d(float seed)
 {
+    float result = (float)0;
     result = 100.0 + BLHash_float1_to_float(seed) * 100.0;
+    return result;
 }
 
-Function BLNoise_rand_offset_2d(in float seed, out float2 result)
+/// @custom
+float2 BLNoise_rand_offset_2d(float seed)
 {
+    float2 result = (float2)0;
     result = float2(100.0 + BLHash_float2_to_float(float2(seed, 0.0)) * 100.0,
                     100.0 + BLHash_float2_to_float(float2(seed, 1.0)) * 100.0);
+    return result;
 }
 
-Function BLNoise_rand_offset_3d(in float seed, out float3 result)
+/// @custom
+float3 BLNoise_rand_offset_3d(float seed)
 {
+    float3 result = (float3)0;
     result = float3(100.0 + BLHash_float2_to_float(float2(seed, 0.0)) * 100.0,
                     100.0 + BLHash_float2_to_float(float2(seed, 1.0)) * 100.0,
                     100.0 + BLHash_float2_to_float(float2(seed, 2.0)) * 100.0);
+    return result;
 }
 
-Function BLNoise_rand_offset_4d(in float seed, out float4 result)
+/// @custom
+float4 BLNoise_rand_offset_4d(float seed)
 {
+    float4 result = (float4)0;
     result = float4(100.0 + BLHash_float2_to_float(float2(seed, 0.0)) * 100.0,
                     100.0 + BLHash_float2_to_float(float2(seed, 1.0)) * 100.0,
                     100.0 + BLHash_float2_to_float(float2(seed, 2.0)) * 100.0,
                     100.0 + BLHash_float2_to_float(float2(seed, 3.0)) * 100.0);
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1024,11 +1104,10 @@ Function BLNoise_rand_offset_4d(in float seed, out float4 result)
 // here rather than in the fractal functions, matching where svm_node_tex_noise does it.
 // ---------------------------------------------------------------------------------------------
 
-Function BLNoise_texture_1d(in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float offset, in float gain,
-                        in float distortion, in float type, in float normalize01,
-                        out float fac, out float3 color)
+/// @custom
+float BLNoise_texture_1d(float w, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float3 color)
 {
+    float fac = (float)0;
     float d = clamp(detail, 0.0, 15.0);
     float r = max(roughness, 0.0);
 
@@ -1046,14 +1125,13 @@ Function BLNoise_texture_1d(in float w, in float scale, in float detail,
     float c1 = BLNoise_select_1d(p + oc1, d, r, lacunarity, offset, gain, type, normalize01);
     float c2 = BLNoise_select_1d(p + oc2, d, r, lacunarity, offset, gain, type, normalize01);
     color = float3(fac, c1, c2);
+    return fac;
 }
 
-
-Function BLNoise_texture_2d(in float2 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float offset, in float gain,
-                        in float distortion, in float type, in float normalize01,
-                        out float fac, out float3 color)
+/// @custom
+float BLNoise_texture_2d(float2 co, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float3 color)
 {
+    float fac = (float)0;
     float d = clamp(detail, 0.0, 15.0);
     float r = max(roughness, 0.0);
 
@@ -1073,14 +1151,13 @@ Function BLNoise_texture_2d(in float2 co, in float scale, in float detail,
     float c1 = BLNoise_select_2d(p + oc1, d, r, lacunarity, offset, gain, type, normalize01);
     float c2 = BLNoise_select_2d(p + oc2, d, r, lacunarity, offset, gain, type, normalize01);
     color = float3(fac, c1, c2);
+    return fac;
 }
 
-
-Function BLNoise_texture_3d(in float3 co, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float offset, in float gain,
-                        in float distortion, in float type, in float normalize01,
-                        out float fac, out float3 color)
+/// @custom
+float BLNoise_texture_3d(float3 co, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float3 color)
 {
+    float fac = (float)0;
     float d = clamp(detail, 0.0, 15.0);
     float r = max(roughness, 0.0);
 
@@ -1102,14 +1179,13 @@ Function BLNoise_texture_3d(in float3 co, in float scale, in float detail,
     float c1 = BLNoise_select_3d(p + oc1, d, r, lacunarity, offset, gain, type, normalize01);
     float c2 = BLNoise_select_3d(p + oc2, d, r, lacunarity, offset, gain, type, normalize01);
     color = float3(fac, c1, c2);
+    return fac;
 }
 
-
-Function BLNoise_texture_4d(in float3 co, in float w, in float scale, in float detail,
-                        in float roughness, in float lacunarity, in float offset, in float gain,
-                        in float distortion, in float type, in float normalize01,
-                        out float fac, out float3 color)
+/// @custom
+float BLNoise_texture_4d(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float3 color)
 {
+    float fac = (float)0;
     float d = clamp(detail, 0.0, 15.0);
     float r = max(roughness, 0.0);
 
@@ -1133,6 +1209,7 @@ Function BLNoise_texture_4d(in float3 co, in float w, in float scale, in float d
     float c1 = BLNoise_select_4d(p + oc1, d, r, lacunarity, offset, gain, type, normalize01);
     float c2 = BLNoise_select_4d(p + oc2, d, r, lacunarity, offset, gain, type, normalize01);
     color = float3(fac, c1, c2);
+    return fac;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1145,78 +1222,70 @@ Function BLNoise_texture_4d(in float3 co, in float w, in float scale, in float d
 // is the Normalize checkbox as 0.0 / 1.0 — the language has no bool-valued input.
 // ---------------------------------------------------------------------------------------------
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::TexNoise1D
+void BL_TexNoise1D(float w, float scale, float detail, float roughness, float lacunarity, float distortion, float normalize01, out float fac, out float3 color)
 {
+    // fBM shorthand: type 0, and offset/gain unused by fBM.
+    fac = BLNoise_texture_1d(w, scale, detail, roughness, lacunarity, 0.0, 1.0,
+                        distortion, 0.0, normalize01, color);
+}
 
-    Function TexNoise1D(in float w, in float scale, in float detail, in float roughness,
-                        in float lacunarity, in float distortion, in float normalize01,
-                        out float fac, out float3 color)
-    {
-        // fBM shorthand: type 0, and offset/gain unused by fBM.
-        BLNoise_texture_1d(w, scale, detail, roughness, lacunarity, 0.0, 1.0,
-                            distortion, 0.0, normalize01, fac, color);
-    }
+/// @custom
+/// @name BL::TexNoise2D
+void BL_TexNoise2D(float2 co, float scale, float detail, float roughness, float lacunarity, float distortion, float normalize01, out float fac, out float3 color)
+{
+    // fBM shorthand: type 0, and offset/gain unused by fBM.
+    fac = BLNoise_texture_2d(co, scale, detail, roughness, lacunarity, 0.0, 1.0,
+                        distortion, 0.0, normalize01, color);
+}
 
-    Function TexNoise2D(in float2 co, in float scale, in float detail, in float roughness,
-                        in float lacunarity, in float distortion, in float normalize01,
-                        out float fac, out float3 color)
-    {
-        // fBM shorthand: type 0, and offset/gain unused by fBM.
-        BLNoise_texture_2d(co, scale, detail, roughness, lacunarity, 0.0, 1.0,
-                            distortion, 0.0, normalize01, fac, color);
-    }
+/// @custom
+/// @name BL::TexNoise3D
+void BL_TexNoise3D(float3 co, float scale, float detail, float roughness, float lacunarity, float distortion, float normalize01, out float fac, out float3 color)
+{
+    // fBM shorthand: type 0, and offset/gain unused by fBM.
+    fac = BLNoise_texture_3d(co, scale, detail, roughness, lacunarity, 0.0, 1.0,
+                        distortion, 0.0, normalize01, color);
+}
 
-    Function TexNoise3D(in float3 co, in float scale, in float detail, in float roughness,
-                        in float lacunarity, in float distortion, in float normalize01,
-                        out float fac, out float3 color)
-    {
-        // fBM shorthand: type 0, and offset/gain unused by fBM.
-        BLNoise_texture_3d(co, scale, detail, roughness, lacunarity, 0.0, 1.0,
-                            distortion, 0.0, normalize01, fac, color);
-    }
+/// @custom
+/// @name BL::TexNoise4D
+void BL_TexNoise4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float distortion, float normalize01, out float fac, out float3 color)
+{
+    // fBM shorthand: type 0, and offset/gain unused by fBM.
+    fac = BLNoise_texture_4d(co, w, scale, detail, roughness, lacunarity, 0.0, 1.0,
+                        distortion, 0.0, normalize01, color);
+}
 
-    Function TexNoise4D(in float3 co, in float w, in float scale, in float detail, in float roughness,
-                        in float lacunarity, in float distortion, in float normalize01,
-                        out float fac, out float3 color)
-    {
-        // fBM shorthand: type 0, and offset/gain unused by fBM.
-        BLNoise_texture_4d(co, w, scale, detail, roughness, lacunarity, 0.0, 1.0,
-                            distortion, 0.0, normalize01, fac, color);
-    }
+/// @custom
+/// @name BL::TexNoiseTyped1D
+void BL_TexNoiseTyped1D(float w, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float fac, out float3 color)
+{
+    fac = BLNoise_texture_1d(w, scale, detail, roughness, lacunarity, offset, gain,
+                        distortion, type, normalize01, color);
+}
 
-    Function TexNoiseTyped1D(in float w, in float scale, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, in float distortion,
-                        in float type, in float normalize01,
-                        out float fac, out float3 color)
-    {
-        BLNoise_texture_1d(w, scale, detail, roughness, lacunarity, offset, gain,
-                            distortion, type, normalize01, fac, color);
-    }
+/// @custom
+/// @name BL::TexNoiseTyped2D
+void BL_TexNoiseTyped2D(float2 co, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float fac, out float3 color)
+{
+    fac = BLNoise_texture_2d(co, scale, detail, roughness, lacunarity, offset, gain,
+                        distortion, type, normalize01, color);
+}
 
-    Function TexNoiseTyped2D(in float2 co, in float scale, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, in float distortion,
-                        in float type, in float normalize01,
-                        out float fac, out float3 color)
-    {
-        BLNoise_texture_2d(co, scale, detail, roughness, lacunarity, offset, gain,
-                            distortion, type, normalize01, fac, color);
-    }
+/// @custom
+/// @name BL::TexNoiseTyped3D
+void BL_TexNoiseTyped3D(float3 co, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float fac, out float3 color)
+{
+    fac = BLNoise_texture_3d(co, scale, detail, roughness, lacunarity, offset, gain,
+                        distortion, type, normalize01, color);
+}
 
-    Function TexNoiseTyped3D(in float3 co, in float scale, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, in float distortion,
-                        in float type, in float normalize01,
-                        out float fac, out float3 color)
-    {
-        BLNoise_texture_3d(co, scale, detail, roughness, lacunarity, offset, gain,
-                            distortion, type, normalize01, fac, color);
-    }
-
-    Function TexNoiseTyped4D(in float3 co, in float w, in float scale, in float detail, in float roughness,
-                        in float lacunarity, in float offset, in float gain, in float distortion,
-                        in float type, in float normalize01,
-                        out float fac, out float3 color)
-    {
-        BLNoise_texture_4d(co, w, scale, detail, roughness, lacunarity, offset, gain,
-                            distortion, type, normalize01, fac, color);
-    }
+/// @custom
+/// @name BL::TexNoiseTyped4D
+void BL_TexNoiseTyped4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float fac, out float3 color)
+{
+    fac = BLNoise_texture_4d(co, w, scale, detail, roughness, lacunarity, offset, gain,
+                        distortion, type, normalize01, color);
 }

@@ -6,32 +6,37 @@
 // is the float3 hash of the same coordinate. There is no scale input — the coordinate goes in
 // unmodified.
 
-import "Hash.dsh";
+#include "Hash.dsh"
 
-Namespace(Name = "BL")
+/// @custom
+/// @name BL::TexWhiteNoise1D
+void BL_TexWhiteNoise1D(float w, out float value, out float3 color)
 {
-    Function TexWhiteNoise1D(in float w, out float value, out float3 color)
-    {
-        value = BLHash_float1_to_float(w);
-        color = BLHash_float1_to_float3(w);
-    }
+    value = BLHash_float1_to_float(w);
+    color = BLHash_float1_to_float3(w);
+}
 
-    Function TexWhiteNoise2D(in float2 co, out float value, out float3 color)
-    {
-        value = BLHash_float2_to_float(co);
-        color = BLHash_float2_to_float3(co);
-    }
+/// @custom
+/// @name BL::TexWhiteNoise2D
+void BL_TexWhiteNoise2D(float2 co, out float value, out float3 color)
+{
+    value = BLHash_float2_to_float(co);
+    color = BLHash_float2_to_float3(co);
+}
 
-    Function TexWhiteNoise3D(in float3 co, out float value, out float3 color)
-    {
-        value = BLHash_float3_to_float(co);
-        color = BLHash_float3_to_float3(co);
-    }
+/// @custom
+/// @name BL::TexWhiteNoise3D
+void BL_TexWhiteNoise3D(float3 co, out float value, out float3 color)
+{
+    value = BLHash_float3_to_float(co);
+    color = BLHash_float3_to_float3(co);
+}
 
-    Function TexWhiteNoise4D(in float3 co, in float w, out float value, out float3 color)
-    {
-        float4 p = float4(co, w);
-        value = BLHash_float4_to_float(p);
-        color = BLHash_float4_to_float3(p);
-    }
+/// @custom
+/// @name BL::TexWhiteNoise4D
+void BL_TexWhiteNoise4D(float3 co, float w, out float value, out float3 color)
+{
+    float4 p = float4(co, w);
+    value = BLHash_float4_to_float(p);
+    color = BLHash_float4_to_float3(p);
 }
