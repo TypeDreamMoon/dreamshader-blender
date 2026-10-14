@@ -88,6 +88,10 @@ float3 BLMagic_color(float3 p, float scale, float depth, float distortion)
     return result;
 }
 
+// Every public function below is also a material function, for the Material Editor:
+// /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Magic/MF_BL_<Name>.
+#pragma generate(Functions = "Magic/MF_{Name}", Library = "Blender|Magic")
+
 /// @custom
 /// @name BL::TexMagic
 void BL_TexMagic(float3 co, float scale, float depth, float distortion, out float fac, out float3 color)

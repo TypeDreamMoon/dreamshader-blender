@@ -1,0 +1,488 @@
+// Calls every material function the package generates, through `extern` prototypes, so that a shader compile
+// of this one material proves all 67 of them compile in a real material -- their pins, their types and the HLSL
+// of their Custom nodes. Like everything under Packages, it is never compiled in place: copy it into the consuming
+// project's DShader/ tree, compile the package's headers (which builds the material functions), then this.
+//
+//   pwsh -File Plugins/DreamShader/.skill/dsc.ps1 check DShader/Materials/Blender/M_BL_MaterialFunctions_Smoke.dss -Shaders
+
+#pragma material(Domain = "Surface", ShadingModel = "Unlit")
+
+/// @default /Engine/EngineResources/WhiteSquareTexture
+static const Texture2D Lut;
+
+/// @group Inputs
+uniform float S = 0.5;
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Brick/MF_BL_TexBrick
+extern void MF_BL_TexBrick(float3 co, float3 color1, float3 color2, float3 mortarColor, float scale, float mortarSize, float mortarSmooth, float bias, float brickWidth, float rowHeight, float offsetAmount, float offsetFrequency, float squashAmount, float squashFrequency, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Checker/MF_BL_TexChecker
+extern void MF_BL_TexChecker(float3 co, float3 color1, float3 color2, float scale, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Color/MF_BL_MixColor
+extern void MF_BL_MixColor(float mode, float fac, float3 color1, float3 color2, float clampFactor, float clampResult, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Color/MF_BL_BrightContrast
+extern void MF_BL_BrightContrast(float3 color, float bright, float contrast, out float3 outColor);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Color/MF_BL_Gamma
+extern void MF_BL_Gamma(float3 color, float gamma, out float3 outColor);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Color/MF_BL_HueSaturation
+extern void MF_BL_HueSaturation(float3 color, float hue, float saturation, float value, float fac, out float3 outColor);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Color/MF_BL_Invert
+extern void MF_BL_Invert(float fac, float3 color, out float3 outColor);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Color/MF_BL_SeparateColor
+extern void MF_BL_SeparateColor(float3 color, float mode, out float3 outChannels);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Color/MF_BL_CombineColor
+extern void MF_BL_CombineColor(float3 channels, float mode, out float3 outColor);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Color/MF_BL_RGBToBW
+extern void MF_BL_RGBToBW(float3 color, out float value);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Curves/MF_BL_ColorRamp
+extern void MF_BL_ColorRamp(Texture2D lut, float fac, float tableSize, float interpolate, out float3 color, out float alpha);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Curves/MF_BL_FloatCurve
+extern void MF_BL_FloatCurve(Texture2D lut, float fac, float value, float minX, float maxX, float tableSize, float extrapolate, out float result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Curves/MF_BL_RGBCurves
+extern void MF_BL_RGBCurves(Texture2D lut, float fac, float3 color, float minX, float maxX, float tableSize, float extrapolate, out float3 result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Gabor/MF_BL_TexGabor2D
+extern void MF_BL_TexGabor2D(float3 co, float scale, float frequency, float anisotropy, float orientation, out float value, out float phase, out float intensity);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Gabor/MF_BL_TexGabor3D
+extern void MF_BL_TexGabor3D(float3 co, float scale, float frequency, float anisotropy, float3 orientation, out float value, out float phase, out float intensity);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Gradient/MF_BL_TexGradient
+extern void MF_BL_TexGradient(float3 co, float type, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Magic/MF_BL_TexMagic
+extern void MF_BL_TexMagic(float3 co, float scale, float depth, float distortion, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Math/MF_BL_Math
+extern void MF_BL_Math(float operation, float a, float b, float c, float doClamp, out float value);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Math/MF_BL_VectorMath
+extern void MF_BL_VectorMath(float operation, float3 a, float3 b, float3 c, float scaleOrIor, out float value, out float3 vec);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Math/MF_BL_MapRange
+extern void MF_BL_MapRange(float value, float fromMin, float fromMax, float toMin, float toMax, float steps, float interpolation, float doClamp, out float result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Math/MF_BL_Clamp
+extern void MF_BL_Clamp(float value, float minValue, float maxValue, float type, out float result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Noise/MF_BL_TexNoise1D
+extern void MF_BL_TexNoise1D(float w, float scale, float detail, float roughness, float lacunarity, float distortion, float normalize01, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Noise/MF_BL_TexNoise2D
+extern void MF_BL_TexNoise2D(float2 co, float scale, float detail, float roughness, float lacunarity, float distortion, float normalize01, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Noise/MF_BL_TexNoise3D
+extern void MF_BL_TexNoise3D(float3 co, float scale, float detail, float roughness, float lacunarity, float distortion, float normalize01, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Noise/MF_BL_TexNoise4D
+extern void MF_BL_TexNoise4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float distortion, float normalize01, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Noise/MF_BL_TexNoiseTyped1D
+extern void MF_BL_TexNoiseTyped1D(float w, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Noise/MF_BL_TexNoiseTyped2D
+extern void MF_BL_TexNoiseTyped2D(float2 co, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Noise/MF_BL_TexNoiseTyped3D
+extern void MF_BL_TexNoiseTyped3D(float3 co, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Noise/MF_BL_TexNoiseTyped4D
+extern void MF_BL_TexNoiseTyped4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float offset, float gain, float distortion, float type, float normalize01, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Space/MF_BL_CoordGenerated
+extern void MF_BL_CoordGenerated(out float3 result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Space/MF_BL_CoordObject
+extern void MF_BL_CoordObject(float unitScale, out float3 result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Space/MF_BL_CoordUV
+extern void MF_BL_CoordUV(float uvIndex, out float3 result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Space/MF_BL_CoordNormal
+extern void MF_BL_CoordNormal(out float3 result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Space/MF_BL_ToUnrealPoint
+extern void MF_BL_ToUnrealPoint(float3 blender, float unitScale, out float3 result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Space/MF_BL_ToUnrealDir
+extern void MF_BL_ToUnrealDir(float3 blenderDir, out float3 result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Tables/MF_BL_Blackbody
+extern void MF_BL_Blackbody(float temperature, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Tables/MF_BL_Wavelength
+extern void MF_BL_Wavelength(float wavelength, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Vector/MF_BL_Mapping
+extern void MF_BL_Mapping(float type, float3 vec, float3 location, float3 rotation, float3 scale, out float3 result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Vector/MF_BL_VectorRotate
+extern void MF_BL_VectorRotate(float type, float3 vec, float3 center, float3 axis, float angle, float3 rotation, float invert, out float3 result);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Vector/MF_BL_Normal
+extern void MF_BL_Normal(float3 direction, float3 inNormal, out float3 outNormal, out float outDot);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Vector/MF_BL_SeparateXYZ
+extern void MF_BL_SeparateXYZ(float3 vec, out float x, out float y, out float z);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Vector/MF_BL_CombineXYZ
+extern void MF_BL_CombineXYZ(float x, float y, float z, out float3 vec);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiF1_1D
+extern void MF_BL_TexVoronoiF1_1D(float w, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiSmoothF1_1D
+extern void MF_BL_TexVoronoiSmoothF1_1D(float w, float scale, float detail, float roughness, float lacunarity, float smoothness, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiF2_1D
+extern void MF_BL_TexVoronoiF2_1D(float w, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiDistToEdge_1D
+extern void MF_BL_TexVoronoiDistToEdge_1D(float w, float scale, float detail, float roughness, float lacunarity, float randomness, float normalize01, out float outDistance);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiRadius_1D
+extern void MF_BL_TexVoronoiRadius_1D(float w, float scale, float randomness, out float outRadius);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiF1_2D
+extern void MF_BL_TexVoronoiF1_2D(float2 co, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiSmoothF1_2D
+extern void MF_BL_TexVoronoiSmoothF1_2D(float2 co, float scale, float detail, float roughness, float lacunarity, float smoothness, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiF2_2D
+extern void MF_BL_TexVoronoiF2_2D(float2 co, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiDistToEdge_2D
+extern void MF_BL_TexVoronoiDistToEdge_2D(float2 co, float scale, float detail, float roughness, float lacunarity, float randomness, float normalize01, out float outDistance);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiRadius_2D
+extern void MF_BL_TexVoronoiRadius_2D(float2 co, float scale, float randomness, out float outRadius);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiF1_3D
+extern void MF_BL_TexVoronoiF1_3D(float3 co, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiSmoothF1_3D
+extern void MF_BL_TexVoronoiSmoothF1_3D(float3 co, float scale, float detail, float roughness, float lacunarity, float smoothness, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiF2_3D
+extern void MF_BL_TexVoronoiF2_3D(float3 co, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiDistToEdge_3D
+extern void MF_BL_TexVoronoiDistToEdge_3D(float3 co, float scale, float detail, float roughness, float lacunarity, float randomness, float normalize01, out float outDistance);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiRadius_3D
+extern void MF_BL_TexVoronoiRadius_3D(float3 co, float scale, float randomness, out float outRadius);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiF1_4D
+extern void MF_BL_TexVoronoiF1_4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiSmoothF1_4D
+extern void MF_BL_TexVoronoiSmoothF1_4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float smoothness, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiF2_4D
+extern void MF_BL_TexVoronoiF2_4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiDistToEdge_4D
+extern void MF_BL_TexVoronoiDistToEdge_4D(float3 co, float w, float scale, float detail, float roughness, float lacunarity, float randomness, float normalize01, out float outDistance);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_TexVoronoiRadius_4D
+extern void MF_BL_TexVoronoiRadius_4D(float3 co, float w, float scale, float randomness, out float outRadius);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Wave/MF_BL_TexWave
+extern void MF_BL_TexWave(float3 co, float scale, float distortion, float detail, float detailScale, float detailRoughness, float phase, float type, float direction, float profile, out float fac, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/WhiteNoise/MF_BL_TexWhiteNoise1D
+extern void MF_BL_TexWhiteNoise1D(float w, out float value, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/WhiteNoise/MF_BL_TexWhiteNoise2D
+extern void MF_BL_TexWhiteNoise2D(float2 co, out float value, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/WhiteNoise/MF_BL_TexWhiteNoise3D
+extern void MF_BL_TexWhiteNoise3D(float3 co, out float value, out float3 color);
+
+/// @asset /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/WhiteNoise/MF_BL_TexWhiteNoise4D
+extern void MF_BL_TexWhiteNoise4D(float3 co, float w, out float value, out float3 color);
+
+export void M_BL_MaterialFunctions_Smoke(inout material Base)
+{
+    float2 UV = UE.TexCoord(Index = 0);
+    float3 P = float3(UV.x, UV.y, S);
+    float Acc = 0.0;
+
+    float TexBrick_fac;
+    float3 TexBrick_color;
+    MF_BL_TexBrick(P, P, P, P, S, S, S, S, S, S, S, S, S, S, TexBrick_fac, TexBrick_color);
+    Acc += TexBrick_fac + (TexBrick_color.x + TexBrick_color.y + TexBrick_color.z);
+    float TexChecker_fac;
+    float3 TexChecker_color;
+    MF_BL_TexChecker(P, P, P, S, TexChecker_fac, TexChecker_color);
+    Acc += TexChecker_fac + (TexChecker_color.x + TexChecker_color.y + TexChecker_color.z);
+    float3 MixColor_color;
+    MF_BL_MixColor(S, S, P, P, S, S, MixColor_color);
+    Acc += (MixColor_color.x + MixColor_color.y + MixColor_color.z);
+    float3 BrightContrast_outColor;
+    MF_BL_BrightContrast(P, S, S, BrightContrast_outColor);
+    Acc += (BrightContrast_outColor.x + BrightContrast_outColor.y + BrightContrast_outColor.z);
+    float3 Gamma_outColor;
+    MF_BL_Gamma(P, S, Gamma_outColor);
+    Acc += (Gamma_outColor.x + Gamma_outColor.y + Gamma_outColor.z);
+    float3 HueSaturation_outColor;
+    MF_BL_HueSaturation(P, S, S, S, S, HueSaturation_outColor);
+    Acc += (HueSaturation_outColor.x + HueSaturation_outColor.y + HueSaturation_outColor.z);
+    float3 Invert_outColor;
+    MF_BL_Invert(S, P, Invert_outColor);
+    Acc += (Invert_outColor.x + Invert_outColor.y + Invert_outColor.z);
+    float3 SeparateColor_outChannels;
+    MF_BL_SeparateColor(P, S, SeparateColor_outChannels);
+    Acc += (SeparateColor_outChannels.x + SeparateColor_outChannels.y + SeparateColor_outChannels.z);
+    float3 CombineColor_outColor;
+    MF_BL_CombineColor(P, S, CombineColor_outColor);
+    Acc += (CombineColor_outColor.x + CombineColor_outColor.y + CombineColor_outColor.z);
+    float RGBToBW_value;
+    MF_BL_RGBToBW(P, RGBToBW_value);
+    Acc += RGBToBW_value;
+    float3 ColorRamp_color;
+    float ColorRamp_alpha;
+    MF_BL_ColorRamp(Lut, S, S, S, ColorRamp_color, ColorRamp_alpha);
+    Acc += (ColorRamp_color.x + ColorRamp_color.y + ColorRamp_color.z) + ColorRamp_alpha;
+    float FloatCurve_result;
+    MF_BL_FloatCurve(Lut, S, S, S, S, S, S, FloatCurve_result);
+    Acc += FloatCurve_result;
+    float3 RGBCurves_result;
+    MF_BL_RGBCurves(Lut, S, P, S, S, S, S, RGBCurves_result);
+    Acc += (RGBCurves_result.x + RGBCurves_result.y + RGBCurves_result.z);
+    float TexGabor2D_value;
+    float TexGabor2D_phase;
+    float TexGabor2D_intensity;
+    MF_BL_TexGabor2D(P, S, S, S, S, TexGabor2D_value, TexGabor2D_phase, TexGabor2D_intensity);
+    Acc += TexGabor2D_value + TexGabor2D_phase + TexGabor2D_intensity;
+    float TexGabor3D_value;
+    float TexGabor3D_phase;
+    float TexGabor3D_intensity;
+    MF_BL_TexGabor3D(P, S, S, S, P, TexGabor3D_value, TexGabor3D_phase, TexGabor3D_intensity);
+    Acc += TexGabor3D_value + TexGabor3D_phase + TexGabor3D_intensity;
+    float TexGradient_fac;
+    float3 TexGradient_color;
+    MF_BL_TexGradient(P, S, TexGradient_fac, TexGradient_color);
+    Acc += TexGradient_fac + (TexGradient_color.x + TexGradient_color.y + TexGradient_color.z);
+    float TexMagic_fac;
+    float3 TexMagic_color;
+    MF_BL_TexMagic(P, S, S, S, TexMagic_fac, TexMagic_color);
+    Acc += TexMagic_fac + (TexMagic_color.x + TexMagic_color.y + TexMagic_color.z);
+    float Math_value;
+    MF_BL_Math(S, S, S, S, S, Math_value);
+    Acc += Math_value;
+    float VectorMath_value;
+    float3 VectorMath_vec;
+    MF_BL_VectorMath(S, P, P, P, S, VectorMath_value, VectorMath_vec);
+    Acc += VectorMath_value + (VectorMath_vec.x + VectorMath_vec.y + VectorMath_vec.z);
+    float MapRange_result;
+    MF_BL_MapRange(S, S, S, S, S, S, S, S, MapRange_result);
+    Acc += MapRange_result;
+    float Clamp_result;
+    MF_BL_Clamp(S, S, S, S, Clamp_result);
+    Acc += Clamp_result;
+    float TexNoise1D_fac;
+    float3 TexNoise1D_color;
+    MF_BL_TexNoise1D(S, S, S, S, S, S, S, TexNoise1D_fac, TexNoise1D_color);
+    Acc += TexNoise1D_fac + (TexNoise1D_color.x + TexNoise1D_color.y + TexNoise1D_color.z);
+    float TexNoise2D_fac;
+    float3 TexNoise2D_color;
+    MF_BL_TexNoise2D(UV, S, S, S, S, S, S, TexNoise2D_fac, TexNoise2D_color);
+    Acc += TexNoise2D_fac + (TexNoise2D_color.x + TexNoise2D_color.y + TexNoise2D_color.z);
+    float TexNoise3D_fac;
+    float3 TexNoise3D_color;
+    MF_BL_TexNoise3D(P, S, S, S, S, S, S, TexNoise3D_fac, TexNoise3D_color);
+    Acc += TexNoise3D_fac + (TexNoise3D_color.x + TexNoise3D_color.y + TexNoise3D_color.z);
+    float TexNoise4D_fac;
+    float3 TexNoise4D_color;
+    MF_BL_TexNoise4D(P, S, S, S, S, S, S, S, TexNoise4D_fac, TexNoise4D_color);
+    Acc += TexNoise4D_fac + (TexNoise4D_color.x + TexNoise4D_color.y + TexNoise4D_color.z);
+    float TexNoiseTyped1D_fac;
+    float3 TexNoiseTyped1D_color;
+    MF_BL_TexNoiseTyped1D(S, S, S, S, S, S, S, S, S, S, TexNoiseTyped1D_fac, TexNoiseTyped1D_color);
+    Acc += TexNoiseTyped1D_fac + (TexNoiseTyped1D_color.x + TexNoiseTyped1D_color.y + TexNoiseTyped1D_color.z);
+    float TexNoiseTyped2D_fac;
+    float3 TexNoiseTyped2D_color;
+    MF_BL_TexNoiseTyped2D(UV, S, S, S, S, S, S, S, S, S, TexNoiseTyped2D_fac, TexNoiseTyped2D_color);
+    Acc += TexNoiseTyped2D_fac + (TexNoiseTyped2D_color.x + TexNoiseTyped2D_color.y + TexNoiseTyped2D_color.z);
+    float TexNoiseTyped3D_fac;
+    float3 TexNoiseTyped3D_color;
+    MF_BL_TexNoiseTyped3D(P, S, S, S, S, S, S, S, S, S, TexNoiseTyped3D_fac, TexNoiseTyped3D_color);
+    Acc += TexNoiseTyped3D_fac + (TexNoiseTyped3D_color.x + TexNoiseTyped3D_color.y + TexNoiseTyped3D_color.z);
+    float TexNoiseTyped4D_fac;
+    float3 TexNoiseTyped4D_color;
+    MF_BL_TexNoiseTyped4D(P, S, S, S, S, S, S, S, S, S, S, TexNoiseTyped4D_fac, TexNoiseTyped4D_color);
+    Acc += TexNoiseTyped4D_fac + (TexNoiseTyped4D_color.x + TexNoiseTyped4D_color.y + TexNoiseTyped4D_color.z);
+    float3 CoordGenerated_result;
+    MF_BL_CoordGenerated(CoordGenerated_result);
+    Acc += (CoordGenerated_result.x + CoordGenerated_result.y + CoordGenerated_result.z);
+    float3 CoordObject_result;
+    MF_BL_CoordObject(S, CoordObject_result);
+    Acc += (CoordObject_result.x + CoordObject_result.y + CoordObject_result.z);
+    float3 CoordUV_result;
+    MF_BL_CoordUV(S, CoordUV_result);
+    Acc += (CoordUV_result.x + CoordUV_result.y + CoordUV_result.z);
+    float3 CoordNormal_result;
+    MF_BL_CoordNormal(CoordNormal_result);
+    Acc += (CoordNormal_result.x + CoordNormal_result.y + CoordNormal_result.z);
+    float3 ToUnrealPoint_result;
+    MF_BL_ToUnrealPoint(P, S, ToUnrealPoint_result);
+    Acc += (ToUnrealPoint_result.x + ToUnrealPoint_result.y + ToUnrealPoint_result.z);
+    float3 ToUnrealDir_result;
+    MF_BL_ToUnrealDir(P, ToUnrealDir_result);
+    Acc += (ToUnrealDir_result.x + ToUnrealDir_result.y + ToUnrealDir_result.z);
+    float3 Blackbody_color;
+    MF_BL_Blackbody(S, Blackbody_color);
+    Acc += (Blackbody_color.x + Blackbody_color.y + Blackbody_color.z);
+    float3 Wavelength_color;
+    MF_BL_Wavelength(S, Wavelength_color);
+    Acc += (Wavelength_color.x + Wavelength_color.y + Wavelength_color.z);
+    float3 Mapping_result;
+    MF_BL_Mapping(S, P, P, P, P, Mapping_result);
+    Acc += (Mapping_result.x + Mapping_result.y + Mapping_result.z);
+    float3 VectorRotate_result;
+    MF_BL_VectorRotate(S, P, P, P, S, P, S, VectorRotate_result);
+    Acc += (VectorRotate_result.x + VectorRotate_result.y + VectorRotate_result.z);
+    float3 Normal_outNormal;
+    float Normal_outDot;
+    MF_BL_Normal(P, P, Normal_outNormal, Normal_outDot);
+    Acc += (Normal_outNormal.x + Normal_outNormal.y + Normal_outNormal.z) + Normal_outDot;
+    float SeparateXYZ_x;
+    float SeparateXYZ_y;
+    float SeparateXYZ_z;
+    MF_BL_SeparateXYZ(P, SeparateXYZ_x, SeparateXYZ_y, SeparateXYZ_z);
+    Acc += SeparateXYZ_x + SeparateXYZ_y + SeparateXYZ_z;
+    float3 CombineXYZ_vec;
+    MF_BL_CombineXYZ(S, S, S, CombineXYZ_vec);
+    Acc += (CombineXYZ_vec.x + CombineXYZ_vec.y + CombineXYZ_vec.z);
+    float TexVoronoiF1_1D_outDistance;
+    float3 TexVoronoiF1_1D_outColor;
+    float3 TexVoronoiF1_1D_outPosition;
+    float TexVoronoiF1_1D_outW;
+    MF_BL_TexVoronoiF1_1D(S, S, S, S, S, S, S, S, S, TexVoronoiF1_1D_outDistance, TexVoronoiF1_1D_outColor, TexVoronoiF1_1D_outPosition, TexVoronoiF1_1D_outW);
+    Acc += TexVoronoiF1_1D_outDistance + (TexVoronoiF1_1D_outColor.x + TexVoronoiF1_1D_outColor.y + TexVoronoiF1_1D_outColor.z) + (TexVoronoiF1_1D_outPosition.x + TexVoronoiF1_1D_outPosition.y + TexVoronoiF1_1D_outPosition.z) + TexVoronoiF1_1D_outW;
+    float TexVoronoiSmoothF1_1D_outDistance;
+    float3 TexVoronoiSmoothF1_1D_outColor;
+    float3 TexVoronoiSmoothF1_1D_outPosition;
+    float TexVoronoiSmoothF1_1D_outW;
+    MF_BL_TexVoronoiSmoothF1_1D(S, S, S, S, S, S, S, S, S, S, TexVoronoiSmoothF1_1D_outDistance, TexVoronoiSmoothF1_1D_outColor, TexVoronoiSmoothF1_1D_outPosition, TexVoronoiSmoothF1_1D_outW);
+    Acc += TexVoronoiSmoothF1_1D_outDistance + (TexVoronoiSmoothF1_1D_outColor.x + TexVoronoiSmoothF1_1D_outColor.y + TexVoronoiSmoothF1_1D_outColor.z) + (TexVoronoiSmoothF1_1D_outPosition.x + TexVoronoiSmoothF1_1D_outPosition.y + TexVoronoiSmoothF1_1D_outPosition.z) + TexVoronoiSmoothF1_1D_outW;
+    float TexVoronoiF2_1D_outDistance;
+    float3 TexVoronoiF2_1D_outColor;
+    float3 TexVoronoiF2_1D_outPosition;
+    float TexVoronoiF2_1D_outW;
+    MF_BL_TexVoronoiF2_1D(S, S, S, S, S, S, S, S, S, TexVoronoiF2_1D_outDistance, TexVoronoiF2_1D_outColor, TexVoronoiF2_1D_outPosition, TexVoronoiF2_1D_outW);
+    Acc += TexVoronoiF2_1D_outDistance + (TexVoronoiF2_1D_outColor.x + TexVoronoiF2_1D_outColor.y + TexVoronoiF2_1D_outColor.z) + (TexVoronoiF2_1D_outPosition.x + TexVoronoiF2_1D_outPosition.y + TexVoronoiF2_1D_outPosition.z) + TexVoronoiF2_1D_outW;
+    float TexVoronoiDistToEdge_1D_outDistance;
+    MF_BL_TexVoronoiDistToEdge_1D(S, S, S, S, S, S, S, TexVoronoiDistToEdge_1D_outDistance);
+    Acc += TexVoronoiDistToEdge_1D_outDistance;
+    float TexVoronoiRadius_1D_outRadius;
+    MF_BL_TexVoronoiRadius_1D(S, S, S, TexVoronoiRadius_1D_outRadius);
+    Acc += TexVoronoiRadius_1D_outRadius;
+    float TexVoronoiF1_2D_outDistance;
+    float3 TexVoronoiF1_2D_outColor;
+    float3 TexVoronoiF1_2D_outPosition;
+    float TexVoronoiF1_2D_outW;
+    MF_BL_TexVoronoiF1_2D(UV, S, S, S, S, S, S, S, S, TexVoronoiF1_2D_outDistance, TexVoronoiF1_2D_outColor, TexVoronoiF1_2D_outPosition, TexVoronoiF1_2D_outW);
+    Acc += TexVoronoiF1_2D_outDistance + (TexVoronoiF1_2D_outColor.x + TexVoronoiF1_2D_outColor.y + TexVoronoiF1_2D_outColor.z) + (TexVoronoiF1_2D_outPosition.x + TexVoronoiF1_2D_outPosition.y + TexVoronoiF1_2D_outPosition.z) + TexVoronoiF1_2D_outW;
+    float TexVoronoiSmoothF1_2D_outDistance;
+    float3 TexVoronoiSmoothF1_2D_outColor;
+    float3 TexVoronoiSmoothF1_2D_outPosition;
+    float TexVoronoiSmoothF1_2D_outW;
+    MF_BL_TexVoronoiSmoothF1_2D(UV, S, S, S, S, S, S, S, S, S, TexVoronoiSmoothF1_2D_outDistance, TexVoronoiSmoothF1_2D_outColor, TexVoronoiSmoothF1_2D_outPosition, TexVoronoiSmoothF1_2D_outW);
+    Acc += TexVoronoiSmoothF1_2D_outDistance + (TexVoronoiSmoothF1_2D_outColor.x + TexVoronoiSmoothF1_2D_outColor.y + TexVoronoiSmoothF1_2D_outColor.z) + (TexVoronoiSmoothF1_2D_outPosition.x + TexVoronoiSmoothF1_2D_outPosition.y + TexVoronoiSmoothF1_2D_outPosition.z) + TexVoronoiSmoothF1_2D_outW;
+    float TexVoronoiF2_2D_outDistance;
+    float3 TexVoronoiF2_2D_outColor;
+    float3 TexVoronoiF2_2D_outPosition;
+    float TexVoronoiF2_2D_outW;
+    MF_BL_TexVoronoiF2_2D(UV, S, S, S, S, S, S, S, S, TexVoronoiF2_2D_outDistance, TexVoronoiF2_2D_outColor, TexVoronoiF2_2D_outPosition, TexVoronoiF2_2D_outW);
+    Acc += TexVoronoiF2_2D_outDistance + (TexVoronoiF2_2D_outColor.x + TexVoronoiF2_2D_outColor.y + TexVoronoiF2_2D_outColor.z) + (TexVoronoiF2_2D_outPosition.x + TexVoronoiF2_2D_outPosition.y + TexVoronoiF2_2D_outPosition.z) + TexVoronoiF2_2D_outW;
+    float TexVoronoiDistToEdge_2D_outDistance;
+    MF_BL_TexVoronoiDistToEdge_2D(UV, S, S, S, S, S, S, TexVoronoiDistToEdge_2D_outDistance);
+    Acc += TexVoronoiDistToEdge_2D_outDistance;
+    float TexVoronoiRadius_2D_outRadius;
+    MF_BL_TexVoronoiRadius_2D(UV, S, S, TexVoronoiRadius_2D_outRadius);
+    Acc += TexVoronoiRadius_2D_outRadius;
+    float TexVoronoiF1_3D_outDistance;
+    float3 TexVoronoiF1_3D_outColor;
+    float3 TexVoronoiF1_3D_outPosition;
+    float TexVoronoiF1_3D_outW;
+    MF_BL_TexVoronoiF1_3D(P, S, S, S, S, S, S, S, S, TexVoronoiF1_3D_outDistance, TexVoronoiF1_3D_outColor, TexVoronoiF1_3D_outPosition, TexVoronoiF1_3D_outW);
+    Acc += TexVoronoiF1_3D_outDistance + (TexVoronoiF1_3D_outColor.x + TexVoronoiF1_3D_outColor.y + TexVoronoiF1_3D_outColor.z) + (TexVoronoiF1_3D_outPosition.x + TexVoronoiF1_3D_outPosition.y + TexVoronoiF1_3D_outPosition.z) + TexVoronoiF1_3D_outW;
+    float TexVoronoiSmoothF1_3D_outDistance;
+    float3 TexVoronoiSmoothF1_3D_outColor;
+    float3 TexVoronoiSmoothF1_3D_outPosition;
+    float TexVoronoiSmoothF1_3D_outW;
+    MF_BL_TexVoronoiSmoothF1_3D(P, S, S, S, S, S, S, S, S, S, TexVoronoiSmoothF1_3D_outDistance, TexVoronoiSmoothF1_3D_outColor, TexVoronoiSmoothF1_3D_outPosition, TexVoronoiSmoothF1_3D_outW);
+    Acc += TexVoronoiSmoothF1_3D_outDistance + (TexVoronoiSmoothF1_3D_outColor.x + TexVoronoiSmoothF1_3D_outColor.y + TexVoronoiSmoothF1_3D_outColor.z) + (TexVoronoiSmoothF1_3D_outPosition.x + TexVoronoiSmoothF1_3D_outPosition.y + TexVoronoiSmoothF1_3D_outPosition.z) + TexVoronoiSmoothF1_3D_outW;
+    float TexVoronoiF2_3D_outDistance;
+    float3 TexVoronoiF2_3D_outColor;
+    float3 TexVoronoiF2_3D_outPosition;
+    float TexVoronoiF2_3D_outW;
+    MF_BL_TexVoronoiF2_3D(P, S, S, S, S, S, S, S, S, TexVoronoiF2_3D_outDistance, TexVoronoiF2_3D_outColor, TexVoronoiF2_3D_outPosition, TexVoronoiF2_3D_outW);
+    Acc += TexVoronoiF2_3D_outDistance + (TexVoronoiF2_3D_outColor.x + TexVoronoiF2_3D_outColor.y + TexVoronoiF2_3D_outColor.z) + (TexVoronoiF2_3D_outPosition.x + TexVoronoiF2_3D_outPosition.y + TexVoronoiF2_3D_outPosition.z) + TexVoronoiF2_3D_outW;
+    float TexVoronoiDistToEdge_3D_outDistance;
+    MF_BL_TexVoronoiDistToEdge_3D(P, S, S, S, S, S, S, TexVoronoiDistToEdge_3D_outDistance);
+    Acc += TexVoronoiDistToEdge_3D_outDistance;
+    float TexVoronoiRadius_3D_outRadius;
+    MF_BL_TexVoronoiRadius_3D(P, S, S, TexVoronoiRadius_3D_outRadius);
+    Acc += TexVoronoiRadius_3D_outRadius;
+    float TexVoronoiF1_4D_outDistance;
+    float3 TexVoronoiF1_4D_outColor;
+    float3 TexVoronoiF1_4D_outPosition;
+    float TexVoronoiF1_4D_outW;
+    MF_BL_TexVoronoiF1_4D(P, S, S, S, S, S, S, S, S, S, TexVoronoiF1_4D_outDistance, TexVoronoiF1_4D_outColor, TexVoronoiF1_4D_outPosition, TexVoronoiF1_4D_outW);
+    Acc += TexVoronoiF1_4D_outDistance + (TexVoronoiF1_4D_outColor.x + TexVoronoiF1_4D_outColor.y + TexVoronoiF1_4D_outColor.z) + (TexVoronoiF1_4D_outPosition.x + TexVoronoiF1_4D_outPosition.y + TexVoronoiF1_4D_outPosition.z) + TexVoronoiF1_4D_outW;
+    float TexVoronoiSmoothF1_4D_outDistance;
+    float3 TexVoronoiSmoothF1_4D_outColor;
+    float3 TexVoronoiSmoothF1_4D_outPosition;
+    float TexVoronoiSmoothF1_4D_outW;
+    MF_BL_TexVoronoiSmoothF1_4D(P, S, S, S, S, S, S, S, S, S, S, TexVoronoiSmoothF1_4D_outDistance, TexVoronoiSmoothF1_4D_outColor, TexVoronoiSmoothF1_4D_outPosition, TexVoronoiSmoothF1_4D_outW);
+    Acc += TexVoronoiSmoothF1_4D_outDistance + (TexVoronoiSmoothF1_4D_outColor.x + TexVoronoiSmoothF1_4D_outColor.y + TexVoronoiSmoothF1_4D_outColor.z) + (TexVoronoiSmoothF1_4D_outPosition.x + TexVoronoiSmoothF1_4D_outPosition.y + TexVoronoiSmoothF1_4D_outPosition.z) + TexVoronoiSmoothF1_4D_outW;
+    float TexVoronoiF2_4D_outDistance;
+    float3 TexVoronoiF2_4D_outColor;
+    float3 TexVoronoiF2_4D_outPosition;
+    float TexVoronoiF2_4D_outW;
+    MF_BL_TexVoronoiF2_4D(P, S, S, S, S, S, S, S, S, S, TexVoronoiF2_4D_outDistance, TexVoronoiF2_4D_outColor, TexVoronoiF2_4D_outPosition, TexVoronoiF2_4D_outW);
+    Acc += TexVoronoiF2_4D_outDistance + (TexVoronoiF2_4D_outColor.x + TexVoronoiF2_4D_outColor.y + TexVoronoiF2_4D_outColor.z) + (TexVoronoiF2_4D_outPosition.x + TexVoronoiF2_4D_outPosition.y + TexVoronoiF2_4D_outPosition.z) + TexVoronoiF2_4D_outW;
+    float TexVoronoiDistToEdge_4D_outDistance;
+    MF_BL_TexVoronoiDistToEdge_4D(P, S, S, S, S, S, S, S, TexVoronoiDistToEdge_4D_outDistance);
+    Acc += TexVoronoiDistToEdge_4D_outDistance;
+    float TexVoronoiRadius_4D_outRadius;
+    MF_BL_TexVoronoiRadius_4D(P, S, S, S, TexVoronoiRadius_4D_outRadius);
+    Acc += TexVoronoiRadius_4D_outRadius;
+    float TexWave_fac;
+    float3 TexWave_color;
+    MF_BL_TexWave(P, S, S, S, S, S, S, S, S, S, TexWave_fac, TexWave_color);
+    Acc += TexWave_fac + (TexWave_color.x + TexWave_color.y + TexWave_color.z);
+    float TexWhiteNoise1D_value;
+    float3 TexWhiteNoise1D_color;
+    MF_BL_TexWhiteNoise1D(S, TexWhiteNoise1D_value, TexWhiteNoise1D_color);
+    Acc += TexWhiteNoise1D_value + (TexWhiteNoise1D_color.x + TexWhiteNoise1D_color.y + TexWhiteNoise1D_color.z);
+    float TexWhiteNoise2D_value;
+    float3 TexWhiteNoise2D_color;
+    MF_BL_TexWhiteNoise2D(UV, TexWhiteNoise2D_value, TexWhiteNoise2D_color);
+    Acc += TexWhiteNoise2D_value + (TexWhiteNoise2D_color.x + TexWhiteNoise2D_color.y + TexWhiteNoise2D_color.z);
+    float TexWhiteNoise3D_value;
+    float3 TexWhiteNoise3D_color;
+    MF_BL_TexWhiteNoise3D(P, TexWhiteNoise3D_value, TexWhiteNoise3D_color);
+    Acc += TexWhiteNoise3D_value + (TexWhiteNoise3D_color.x + TexWhiteNoise3D_color.y + TexWhiteNoise3D_color.z);
+    float TexWhiteNoise4D_value;
+    float3 TexWhiteNoise4D_color;
+    MF_BL_TexWhiteNoise4D(P, S, TexWhiteNoise4D_value, TexWhiteNoise4D_color);
+    Acc += TexWhiteNoise4D_value + (TexWhiteNoise4D_color.x + TexWhiteNoise4D_color.y + TexWhiteNoise4D_color.z);
+
+    Base.EmissiveColor = float3(Acc, Acc, Acc) * 0.001;
+}

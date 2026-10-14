@@ -63,6 +63,10 @@ float BLWave_fac(float3 p, float type, float direction, float profile, float dis
     return result;
 }
 
+// Every public function below is also a material function, for the Material Editor:
+// /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Wave/MF_BL_<Name>.
+#pragma generate(Functions = "Wave/MF_{Name}", Library = "Blender|Wave")
+
 /// @custom
 /// @name BL::TexWave
 void BL_TexWave(float3 co, float scale, float distortion, float detail, float detailScale, float detailRoughness, float phase, float type, float direction, float profile, out float fac, out float3 color)

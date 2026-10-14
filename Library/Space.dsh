@@ -116,6 +116,10 @@ float3 BLSpace_generated(float3 ueLocal, float3 boundsMin, float3 boundsMax)
 // `unitScale` is Unreal units per Blender unit; 100 for a default export.
 // ---------------------------------------------------------------------------------------------
 
+// Every public function below is also a material function, for the Material Editor:
+// /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Space/MF_BL_<Name>.
+#pragma generate(Functions = "Space/MF_{Name}", Library = "Blender|Space")
+
 // Blender's Generated: the undeformed position normalised into the object's bounding box.
 // Pre-skinned on both sides — Blender evaluates it before modifiers, Unreal's
 // PreSkinnedPosition and PreSkinnedLocalBounds are before skinning — so an animated mesh does

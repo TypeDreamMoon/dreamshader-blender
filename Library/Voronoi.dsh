@@ -1989,6 +1989,10 @@ float BLVor_fractal_d2e_4(float4 coord, float detail, float roughness, float lac
 // Distance To Edge, N-Sphere Radius and every 1D entry, as in Blender.
 // ---------------------------------------------------------------------------------------------
 
+// Every public function below is also a material function, for the Material Editor:
+// /Game/DreamShaderPackages/typedreammoon/dreamshader-blender/Voronoi/MF_BL_<Name>.
+#pragma generate(Functions = "Voronoi/MF_{Name}", Library = "Blender|Voronoi")
+
 /// @custom
 /// @name BL::TexVoronoiF1_1D
 void BL_TexVoronoiF1_1D(float w, float scale, float detail, float roughness, float lacunarity, float randomness, float metric, float exponent, float normalize01, out float outDistance, out float3 outColor, out float3 outPosition, out float outW)
