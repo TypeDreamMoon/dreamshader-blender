@@ -1,6 +1,6 @@
 {
   "name": "@typedreammoon/dreamshader-blender",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "displayName": "DreamShader Blender",
   "description": "Blender's shader nodes, ported to DreamShaderLang from the Cycles kernel.",
   "author": "TypeDreamMoon",
@@ -8,7 +8,7 @@
   "license": "Apache-2.0",
   "dreamshader": {
     "language": "DreamShaderLang",
-    "version": ">=1.5.0",
+    "version": ">2.1.2",
     "entry": "Library/Blender.dsh"
   },
   "keywords": [

@@ -13,29 +13,67 @@ DreamShaderLang: Install Package from GitHub
 https://github.com/TypeDreamMoon/dreamshader-blender
 ```
 
-## Import
+## Requirements
 
-```c
-import "@typedreammoon/dreamshader-blender/Library/Blender.dsh";   // everything
-import "@typedreammoon/dreamshader-blender/Library/Noise.dsh";     // just the noise family
+DreamShader **after 2.1.2** — the headers are DreamShaderLang 2.0, called as `BL::Fn(...)` from a
+`.dss`, and they generate material functions (`#pragma generate`). Version 0.9.0 of this package is
+the last one written in the 1.x syntax.
+
+## Include
+
+```hlsl
+#include "@typedreammoon/dreamshader-blender/Library/Blender.dsh"   // everything
+#include "@typedreammoon/dreamshader-blender/Library/Noise.dsh"     // just the noise family
 ```
+
+A 1.x `.dsm` still takes them with `import "...";` and calls `BL::Fn(...)` in its `Graph` as before.
 
 ## Example
 
-```c
-Graph = {
-    float2 uv = UE.TexCoord(Index=0);
+```hlsl
+#include "@typedreammoon/dreamshader-blender/Library/Noise.dsh"
+
+#pragma material(Domain = "Surface", ShadingModel = "Unlit")
+
+export void M_Noise(inout material Base)
+{
+    float2 uv = UE.TexCoord(Index = 0);
     float3 p  = float3(uv.x, uv.y, 0.0);
 
+    float Fac;
+    float3 Color;
     //             co  scale  detail  roughness  lacunarity  distortion  normalize  -> fac, color
     BL::TexNoise3D(p,  5.0,   2.0,    0.5,       2.0,        0.0,        1.0,          Fac, Color);
 
-    EmissiveColor = Color;
+    Base.EmissiveColor = Color;
 }
 ```
 
-A complete material is in [`Examples/M_BL_TexNoise_Preview.dsm`](Examples/M_BL_TexNoise_Preview.dsm).
-Copy it out of `DShader/Packages` before building it — a `.dsm` inside a package is never compiled.
+A complete material is in [`Examples/M_BL_TexNoise_Preview.dss`](Examples/M_BL_TexNoise_Preview.dss).
+Copy it out of `DShader/Packages` before building it — a source inside a package is built only from
+its `Assets` folder.
+
+## Material functions
+
+Every public entry point is also a material function, for whoever builds materials in the Material
+Editor rather than in text. Installing the package is enough: the plugin builds them in the project,
+at startup and on a cook, under
+
+```text
+/Game/DreamShaderPackages/typedreammoon/dreamshader-blender/<Header>/MF_BL_<Name>
+```
+
+— `Noise/MF_BL_TexNoise3D`, `Voronoi/MF_BL_TexVoronoiF1_3D`, `Math/MF_BL_MapRange`, all 67 of them —
+and lists each in the function library under **Blender ▸ \<Header\>**. A material function has an
+input per input of the entry point, in the same order and with the same names, and an output per
+output. Each header asks for them with one line above its public functions:
+
+```hlsl
+#pragma generate(Functions = "Noise/MF_{Name}", Library = "Blender|Noise")
+```
+
+A `.dss` calling `BL::TexNoise3D(...)` still inlines the function; the material functions are for the
+graph. Updating the package rebuilds them; one you edited by hand is not overwritten without asking.
 
 ## Status
 
@@ -59,8 +97,8 @@ Copy it out of `DShader/Packages` before building it — a `.dsm` inside a packa
 | Texture Coordinate — Camera, Window, Reflection | — | — | need view matrices whose handedness differs; deliberately absent |
 | BSDF closures | — | — | out of scope without Substrate; see below |
 
-Import a single header when you only need one family — the closure is inlined as text, so a
-narrow import means a smaller generated include and a shorter shader compile.
+Include a single header when you only need one family — what a material calls is inlined into its
+Custom node, so a narrow include means less code to bind and a shorter shader compile.
 
 ### API
 
@@ -286,24 +324,36 @@ This package uses Cycles' own name, `co`.
 `normalize` is one of them, so a material exposing Blender's Normalize checkbox must not name the
 parameter `Normalize`. The examples use `NormalizeOutput`.
 
-**Namespace only the public API.** A namespace-qualified call inside a `Function` body is *not*
-rewritten — `BL::Foo` is normalized to `BL_Foo` before the rewriter sees it, and it fails to
-match. Internals are therefore top-level `BLHash_*` / `BLNoise_*`; only entry points live in
-`Namespace(Name="BL")`, and those are called from `Graph`, where `::` works.
+**Only the public API is `BL::`.** An entry point is `void BL_Name(...)` with `/// @name BL::Name`,
+which callers spell `BL::Name(...)` and which keeps its results as `out` parameters — they are the
+pins of its material function. Internals are `BLHash_*` / `BLNoise_*` / …, declared above the
+`#pragma generate` line so that none of them becomes a material function, and called only from
+other function bodies.
+
+**An internal function returns its first result.** `float BLNoise_fade(float t)`, called as
+`float f = BLNoise_fade(t);`; any further results stay `out` parameters, after the inputs. Declare
+the returned value first and zero it — `float result = (float)0;` — and `return` it last.
 
 ## Testing
 
-`dsc compile` proves the source parses and the graph builds. It does **not** prove the generated
-HLSL compiles — the commandlet runs with `-nullrhi`. Every defect found so far was invisible to
-it. Always run both; the pair takes well under a minute:
+`dsc compile` proves the source parses and the graph builds. It does **not** prove the HLSL
+compiles — the commandlet runs with `-nullrhi`. Every defect found so far was invisible to it.
+`check -Shaders` builds the material and compiles its shaders for real. Copy the two materials under
+`Tests/` into the project's `DShader/Materials/Blender/`, then:
 
 ```bash
-pwsh -File Plugins/DreamShader/.skill/dsc.ps1 compile DShader/Materials/Blender/M_BL_Textures_Parity.dsm -Force
+pwsh -File Plugins/DreamShader/.skill/dsc.ps1 compile -All
+pwsh -File Plugins/DreamShader/.skill/dsc.ps1 check DShader/Materials/Blender/M_BL_Textures_Parity.dss -Shaders -Platform SM6,SM5
+pwsh -File Plugins/DreamShader/.skill/dsc.ps1 check DShader/Materials/Blender/M_BL_MaterialFunctions_Smoke.dss -Shaders -Platform SM6,SM5
 ```
 
-```bash
-pwsh -File DShader/Packages/@typedreammoon/dreamshader-blender/Tests/compile-hlsl.ps1
-```
+`M_BL_Textures_Parity` calls every entry point inline; `M_BL_MaterialFunctions_Smoke` calls every
+generated material function through an `extern` prototype, so it proves their pins and types too.
+`compile -All` builds the material functions first.
+
+`Tests/compile-hlsl.ps1` and `Tests/parity` read the `.ush` include the 1.x generator wrote, which
+DreamShader 2.0 no longer writes; they have not been ported yet. The parity figures below were
+measured on the 1.x text, of which the 2.0 headers are a mechanical rewrite.
 
 ## Scope
 

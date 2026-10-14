@@ -1,6 +1,32 @@
 # Tests
 
-## What exists
+## The gate
+
+Two materials, built with `check -Shaders`, which compiles their shaders with the real compiler:
+
+| material | what it proves |
+| :-- | :-- |
+| `M_BL_Textures_Parity.dss` | every public entry point compiles inline, called with a non-zero weight so none can be dead-code eliminated, every dropdown driven from a parameter so no variant folds away |
+| `M_BL_MaterialFunctions_Smoke.dss` | every material function the package generates compiles in a real material — its pins, their types and its Custom node — called through an `extern` prototype |
+
+Like everything else under `Packages`, they are never compiled in place: copy both into the
+consuming project's `DShader/Materials/Blender/` and build the copies. Compile the project first,
+which builds the package's material functions; the second material needs them.
+
+```bash
+pwsh -File Plugins/DreamShader/.skill/dsc.ps1 compile -All
+pwsh -File Plugins/DreamShader/.skill/dsc.ps1 check DShader/Materials/Blender/M_BL_Textures_Parity.dss -Shaders -Platform SM6,SM5
+pwsh -File Plugins/DreamShader/.skill/dsc.ps1 check DShader/Materials/Blender/M_BL_MaterialFunctions_Smoke.dss -Shaders -Platform SM6,SM5
+```
+
+`M_BL_MaterialFunctions_Smoke.dss` is generated from the headers, one call per `BL_` function after a
+`#pragma generate`; regenerate it when an entry point is added or changes its signature.
+
+## Not yet ported to DreamShader 2.0
+
+`compile-hlsl.ps1` and `parity/` below read the `.ush` include the 1.x generator wrote. DreamShader
+2.0 puts a function's HLSL into the Custom node instead and writes no include, so both need a new
+source for the HLSL before they run again. What follows describes them as they worked on 1.x.
 
 `compile-hlsl.ps1` — the HLSL compile gate. Finds the DreamShader-generated `.ush` for this
 package, stages it with `EntryPoints.hlsl`, and compiles it with `dxc` (`ps_6_0`) and `fxc`
